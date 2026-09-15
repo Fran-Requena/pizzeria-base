@@ -1,116 +1,102 @@
-# Práctica 1: Despliegue de Aplicación Full-Stack en AWS Cloud
+# Práctica: Despliegue en AWS EC2 de Aplicación Full-Stack
 **Módulo:** Despliegue de Aplicaciones Web (2º DAW)  
-**Proyecto:** Pizzería Bella Napoli  
-**Infraestructura:** AWS Academy Learner Lab (Amazon EC2 + Docker Compose)
+**Proyecto:** Pizzería Bella Napoli
+
+El objetivo de esta práctica es el despliegue en un entorno de producción (nube pública AWS) de una arquitectura multi-contenedor (frontend, backend, base de datos relacional y proxy inverso).
 
 ---
 
-## 🎯 Objetivos de la Sesión
-* Configurar el entorno de computación en la nube (AWS EC2) y su cortafuegos (Security Groups).
-* Establecer el flujo de control de versiones mediante bifurcación (*Fork*) en GitHub.
-* Automatizar la puesta en marcha de un stack multi-contenedor (Frontend, Backend, BD y Proxy Inverso).
-* Verificar el enrutamiento web y la persistencia de datos en producción.
+## FASE 1: Acceso y Activación del Entorno AWS Academy
+
+El entorno de AWS Academy Learner Lab requiere la aceptación de los términos de servicio y la superación de una prueba de conocimientos previa para habilitar la infraestructura.
+
+1. Acceder al correo electrónico institucional y localizar la invitación de **Instructure Canvas / AWS Academy**. Proceder al registro y creación de credenciales.
+2. Acceder al curso en Canvas y navegar a la sección **Contenidos** (o *Modules*).
+3. **Prueba de conocimientos obligatoria:** 
+   * Desplegar el módulo **"Conformidad y seguridad del Laboratorio"**.
+   * Realizar la **Prueba de conocimientos** sobre las políticas de uso aceptable del entorno. Es necesario obtener una calificación mínima de **70/100** para avanzar (se permiten múltiples intentos).
+4. Tras superar la prueba, acceder al enlace **"Lanzamiento del Laboratorio para el alumnado de AWS Academy"**.
+5. En la interfaz de Vocareum, aceptar los términos de servicio (botón **I Agree** situado en la parte inferior).
+6. En la parte superior derecha, pulsar **Start Lab**. Cuando el indicador situado junto a la etiqueta "AWS" cambie a color **verde**, pulsar sobre el texto "AWS" para abrir la Consola de Administración.
+7. Verificar en la esquina superior derecha que la región activa sea **N. Virginia (`us-east-1`)**.
 
 ---
 
-## Bloque 1: Registro, Test de Seguridad y Activación del Lab (20 min)
+## FASE 2: Preparación del Repositorio de Trabajo (Fork)
 
-1. Abre tu bandeja de entrada del correo del instituto (`@alu.edu.gva.es`).
-2. Localiza el correo de invitación de **Instructure Canvas / AWS Academy** y pulsa en **Get Started** o **Join**.
-3. Crea tu contraseña para acceder a la plataforma.
-4. En el menú de la izquierda, haz clic en **Contenidos** (o *Modules*).
-5. **EL TEST OBLIGATORIO:** Verás que el laboratorio está bloqueado. Para abrirlo, despliega el módulo **"Conformidad y seguridad del Laboratorio"**.
-   * Abre y lee la "Guía del alumno...".
-   * Entra en la **Prueba de conocimientos**. Es un test de normas de uso del laboratorio (prohibido minar criptomonedas, prohibido lanzar ataques, etc.).
-   * Debes obtener al menos un **70/100** (dispones de intentos ilimitados).
-6. Una vez aprobado, se desbloqueará el módulo inferior. Haz clic en **Lanzamiento del Laboratorio para el alumnado de AWS Academy**.
-7. En la nueva pantalla (Vocareum), acepta los Términos de Servicio abajo del todo (**I Agree**).
-8. Pulsa el botón superior **Start Lab** y espera a que el círculo situado junto a la etiqueta **AWS** pase de rojo/amarillo a **verde**.
-9. Haz clic sobre el texto **AWS** (con el círculo verde) para abrir la Consola de Administración de AWS.
-10. Verifica en la esquina superior derecha que la región activa sea **N. Virginia (`us-east-1`)**.
+El desarrollo se realizará sobre una bifurcación independiente del repositorio oficial.
+
+1. Iniciar sesión en la plataforma [GitHub](https://github.com).
+2. Acceder al repositorio base de la práctica:  
+   `https://github.com/guillermofoix/pizzeria-base`
+3. En la esquina superior derecha, pulsar el botón **Fork**.
+4. Mantener seleccionada la opción "Copy the `main` branch only" y pulsar **Create fork**.
+5. El repositorio de trabajo personal quedará disponible en la ruta: `https://github.com/TU_USUARIO/pizzeria-base`.
 
 ---
 
-## Bloque 2: Aprovisionamiento de la Instancia EC2 (20 min)
+## FASE 3: Aprovisionamiento de la Infraestructura en AWS
 
-### 1. Creación del Security Group
-1. En el buscador superior de la consola de AWS, escribe **EC2** y entra en el panel.
-2. En el menú lateral izquierdo, ve a **Network & Security** -> **Security Groups** (*Grupos de seguridad*).
-3. Haz clic en **Create security group**.
-   * **Security group name:** `sg-pizzeria`
-   * **Description:** `Acceso web y SSH para despliegue DAW`
-   * **VPC:** Mantén la seleccionada por defecto.
-4. En **Inbound rules** (*Reglas de entrada*), pulsa **Add rule** y añade las siguientes 4 reglas:
+### 1. Configuración del Grupo de Seguridad (Security Group)
+1. En el buscador superior de la consola de AWS, introducir **EC2** y acceder al servicio.
+2. En el panel de navegación izquierdo, sección **Red y seguridad**, seleccionar **Grupos de seguridad**.
+3. Pulsar **Crear grupo de seguridad**:
+   * **Nombre:** `sg-pizzeria`
+   * **Descripción:** `Reglas de entrada para servidor web y base de datos`
+4. En **Reglas de entrada** (*Inbound rules*), añadir las siguientes reglas (seleccionando en origen `0.0.0.0/0` o *Cualquier lugar - IPv4*):
 
-| Tipo | Protocolo | Rango de puertos | Origen (Source) | Justificación |
-| :--- | :--- | :--- | :--- | :--- |
-| **SSH** | TCP | `22` | `0.0.0.0/0` (Anywhere-IPv4) | Gestión remota por consola |
-| **HTTP** | TCP | `80` | `0.0.0.0/0` (Anywhere-IPv4) | Tráfico web comercial y API |
-| **HTTPS** | TCP | `443` | `0.0.0.0/0` (Anywhere-IPv4) | Tráfico cifrado SSL/TLS |
-| **Custom TCP** | TCP | `8082` | `0.0.0.0/0` (Anywhere-IPv4) | Gestor visual de BD (Adminer) |
+| Tipo | Intervalo de puertos | Propósito |
+| :--- | :--- | :--- |
+| **SSH** | `22` | Acceso por terminal remota. |
+| **HTTP** | `80` | Tráfico del portal web y enrutamiento a la API. |
+| **HTTPS** | `443` | Tráfico cifrado. |
+| **TCP personalizado** | `8082` | Acceso a la interfaz de gestión de base de datos (Adminer). |
 
-5. Desplázate al final de la página y pulsa **Create security group**.
+5. Pulsar **Crear grupo de seguridad**.
 
-### 2. Lanzamiento de la Máquina Virtual
-1. En el menú lateral izquierdo, ve a **Instances** -> **Launch instances**.
-2. Configura los parámetros de la máquina:
-   * **Name:** `Pizzeria-[TuNombre]`
-   * **Application and OS Images (AMI):** Selecciona **Ubuntu** (`Ubuntu Server 24.04 LTS` o `22.04 LTS`, 64-bit x86).
-   * **Instance type:** Selecciona **`t3.small`** (o `t2.small`). *(Recomendado: 2 GiB de memoria para compilar y ejecutar los 5 contenedores sin cuellos de botella)*.
-   * **Key pair (login):** Selecciona `vockey`.
-   * **Network settings:** Haz clic en **Edit** -> Marca **Select existing security group** -> Selecciona `sg-pizzeria`.
-   * **Configure storage:** Cambia el tamaño del disco a **20 GiB** (gp3).
-3. Pulsa el botón naranja **Launch instance**.
-
----
-
-## Bloque 3: Fork del Proyecto y Conexión a la Máquina (15 min)
-
-### 1. Fork en GitHub
-1. Inicia sesión en tu cuenta personal de [GitHub](https://github.com).
-2. Entra al repositorio base oficial:  
-   `https://github.com/guillermofoix/pizzeria-base.git`
-3. En la esquina superior derecha, haz clic en **Fork**.
-4. Asegúrate de marcar **Copy the `main` branch only** y pulsa **Create fork**.
-5. Ahora dispones de tu propia copia independiente en:  
-   `https://github.com/TU_USUARIO/pizzeria-base`
-
-### 2. Conexión a la Instancia
-1. Vuelve a la consola de AWS -> **Instances**.
-2. Espera a que el estado de tu instancia sea **Running**.
-3. Selecciónala con el checkbox y haz clic en el botón superior **Connect**.
-4. En la pestaña **EC2 Instance Connect**, pulsa el botón **Connect**. Se abrirá una terminal web de Linux en una pestaña nueva del navegador.
+### 2. Lanzamiento de la Instancia EC2
+1. En el panel izquierdo, acceder a **Instancias** y pulsar **Lanzar instancias**.
+2. Configurar los siguientes parámetros:
+   * **Nombre:** `Pizzeria-TuNombre`
+   * **Imágenes de SO (AMI):** Seleccionar **Ubuntu** (Ubuntu Server 24.04 o 22.04 LTS, 64-bit x86).
+   * **Tipo de instancia:** Seleccionar **`t3.small`** *(la opción 'micro' carece de los recursos necesarios para orquestar los contenedores).*
+   * **Par de claves:** Seleccionar la clave predeterminada (`vockey`).
+   * **Configuraciones de red:** Pulsar en *Editar* $\rightarrow$ *Seleccionar grupo de seguridad existente* $\rightarrow$ Seleccionar el grupo `sg-pizzeria`.
+   * **Configurar almacenamiento:** Asignar **20 GiB** al volumen principal (gp3).
+3. Pulsar **Lanzar instancia**.
 
 ---
 
-## Bloque 4: Despliegue de la Aplicación en AWS (35 min)
+## FASE 4: Configuración y Despliegue de Servicios
 
-Ejecuta los siguientes comandos en la terminal de tu máquina virtual:
+### 1. Acceso a la Terminal Remota
+1. En la vista de **Instancias**, marcar la casilla correspondiente al servidor creado.
+2. Pulsar el botón superior **Conectar**.
+3. En la pestaña **Conexión de la instancia EC2**, mantener el usuario `ubuntu` y pulsar el botón **Conectar**. Se abrirá la consola de comandos del servidor Linux.
 
-### 1. Instalación del Motor de Docker y Compose
+### 2. Instalación de Docker y Permisos
+Ejecutar los siguientes comandos de forma secuencial.  
+> **Nota técnica:** Al pegar texto en la terminal web, verifique que no se inserten caracteres de escape (ej. `200~`) al inicio de la línea. Si esto ocurre, bórrelos antes de pulsar Enter.
+
 ```bash
-# Descargar y ejecutar el instalador oficial de Docker
+# 1. Instalación de Docker Engine oficial
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 rm get-docker.sh
 
-# Añadir el usuario ubuntu al grupo docker
+# 2. Configuración de privilegios del usuario
 sudo usermod -aG docker $USER
-
-# Aplicar permisos al grupo sin cerrar la sesión
 newgrp docker
-```
 
-Verifica la instalación con:
-```bash
-docker --version
+# 3. Verificación de la instalación
 docker compose version
 ```
 
 ---
 
-### 2. Clonación de tu Fork
-Clona tu propio repositorio bifurcado (sustituye `TU_USUARIO` por tu usuario real de GitHub):
+### 3. Clonación del Repositorio Personal
+Clonar la bifurcación propia (reemplazar `TU_USUARIO` por la cuenta personal de GitHub):
+
 ```bash
 git clone https://github.com/TU_USUARIO/pizzeria-base.git
 cd pizzeria-base
@@ -118,64 +104,58 @@ cd pizzeria-base
 
 ---
 
-### 3. Configuración de Variables de Entorno
-Copia la plantilla `.env.example` para generar tu archivo `.env` de producción:
+### 4. Variables de Entorno de Producción
+Generar el archivo `.env` a partir de la plantilla preconfigurada para producción:
+
 ```bash
 cp .env.example .env
 ```
-*(Nota: El archivo ya viene preconfigurado con `HTTP_PORT=80` y `HTTPS_PORT=443`. Si deseas personalizar tu contraseña de PostgreSQL, puedes editarla con `nano .env` en la variable `DB_PASSWORD`)*.
+*(Nota: La plantilla ya viene configurada con los puertos estándar `HTTP_PORT=80` y `HTTPS_PORT=443`).*
 
 ---
 
-### 4. Compilación y Arranque de Contenedores en Producción
-Lanza el stack completo en segundo plano:
+### 5. Compilación y Puesta en Marcha
+Orquestar y compilar los contenedores en segundo plano:
+
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
-> ⏳ El proceso descargará las imágenes base (PostgreSQL 16, Node 20, Nginx Alpine) y compilará la API y el Frontend. Suele tardar de 1 a 2 minutos.
 
----
+Verificar que los 5 servicios se encuentren en estado **Up**:
 
-### 5. Verificación de Servicios
-Comprueba que los 5 contenedores estén en estado **Up**:
 ```bash
 docker compose -f docker-compose.prod.yml ps
 ```
 
-Si necesitas consultar los logs del backend o de la base de datos para depurar:
-```bash
-docker compose -f docker-compose.prod.yml logs -f backend
-```
-*(Pulsa `Ctrl + C` para salir de la vista de logs)*.
-
 ---
 
-## Bloque 5: Comprobación en Navegador y URLs de Producción
+## FASE 5: Verificación y Rutas de Acceso
 
-Obtén la IP pública de tu máquina EC2 ejecutando:
+Obtener la dirección IP pública asignada a la instancia:
+
 ```bash
 curl -s ifconfig.me
 ```
 
-Abre tu navegador habitual (en PC o teléfono móvil) y accede a las siguientes rutas:
+Comprobar el funcionamiento desde un navegador web mediante las siguientes direcciones:
 
-| Servicio | URL de Acceso | Descripción |
+| Servicio | Ruta de acceso | Resultado esperado |
 | :--- | :--- | :--- |
-| **Portal Web & Cocina KDS** | `http://<TU_IP_PUBLICA>` | Menú comercial, toma de comandas y pantalla táctil de cocina. |
-| **API REST Healthcheck** | `http://<TU_IP_PUBLICA>/api/health` | Diagnóstico de salud; debe responder `status: UP` y `connected: true`. |
-| **WebApp Móvil Clientes** | `http://<TU_IP_PUBLICA>/app/` | Aplicación PWA para clientes y lectura de QR en mesas. |
-| **Gestor Visual Adminer** | `http://<TU_IP_PUBLICA>:8082` | Gestor web de PostgreSQL (Servidor: `db`, Usuario: `pizzeria_user`). |
+| **Portal Web & Cocina KDS** | `http://<IP_PUBLICA>` | Interfaz comercial interactiva y panel de pedidos de cocina. |
+| **Diagnóstico de la API** | `http://<IP_PUBLICA>/api/health` | Respuesta JSON: `{"status":"UP","database":{"connected":true}}`. |
+| **WebApp Móvil Clientes** | `http://<IP_PUBLICA>/app/` | Aplicación PWA para clientes y lectura de mesas QR. |
+| **Gestión de Base de Datos** | `http://<IP_PUBLICA>:8082` | Interfaz Adminer (Servidor: `db`, Usuario: `pizzeria_user`). |
 
 ---
 
-## Bloque 6: Cierre de la Sesión y Persistencia (Importante)
+## FASE 6: Procedimiento de Cierre de Sesión
 
-Para evitar consumir créditos de forma innecesaria en AWS Academy sin perder tus datos:
+Para preservar los créditos asignados sin comprometer la persistencia de los datos:
 
-1. **NO ejecutes `docker compose down -v`:** El volumen `pizzeria_prod_pgdata` almacena las pizzas y pedidos creados. Si destruyes los volúmenes perderás los cambios.
-2. Si deseas pausar los contenedores en la máquina:
+1. **No ejecutar `docker compose down -v`:** La información de pedidos y productos reside en el volumen persistente `pizzeria_prod_pgdata`.
+2. Para detener los contenedores en la máquina:
    ```bash
    docker compose -f docker-compose.prod.yml stop
    ```
-3. En la consola de AWS: Selecciona tu instancia -> **Instance state** -> **Stop instance** (*Detener instancia*).
-4. En el panel de Canvas / AWS Academy: Pulsa en **End Lab** o **Stop Lab**.
+3. En la consola de AWS: Seleccionar la instancia $\rightarrow$ **Estado de la instancia** $\rightarrow$ **Detener instancia**.
+4. En el panel de Vocareum / AWS Academy: Pulsar **End Lab** o **Stop Lab**.
