@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#dc2626">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- APP CONTAINER -->
+  <div class="mobile-app">
+
+    <!-- HERO HEADER -->
+    <header class="app-header">
+      <div class="header-top">
+        <div class="brand">
+          <span class="brand-emoji">🍕</span>
+          <div>
+            <h1 class="brand-name">Bella Napoli</h1>
+            <p class="brand-tagline">Pizzería Artesanal</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- CATEGORY SLIDER -->
+      <nav class="category-slider">
+        <button class="cat-pill active" data-cat="all">🔥 Todas</button>
+        <button class="cat-pill" data-cat="1">🍕 Clásicas</button>
+        <button class="cat-pill" data-cat="2">⭐ Especiales</button>
+        <button class="cat-pill" data-cat="3">👑 Gourmet</button>
+      </nav>
+    </header>
+
+    <!-- MAIN SCROLLABLE CONTENT -->
+    <main class="app-content">
+      
+      <!-- ESTADO DE PEDIDO ACTIVO (SI YA REALIZÓ UNO) -->
+      <section id="active-order-banner" class="order-status-banner hidden">
+        <div class="order-status-card">
+          <div class="order-status-header">
+            <span class="status-live-icon">🔥</span>
+            <div>
+              <h3 id="tracking-title">Pedido #104 en marcha</h3>
+              <p id="tracking-status-text">Estado: En preparación en el horno</p>
+            </div>
+          </div>
+          <div class="progress-bar-track">
+            <div id="progress-bar-fill" class="progress-bar-fill"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CATÁLOGO DE PIZZAS -->
+      <section class="menu-section">
+        <h2 class="menu-heading">Nuestras Pizzas de Autor</h2>
+        <div id="pizzas-container" class="pizzas-list">
+          <div class="loading-state">
+            <p>Cargando carta artesanal...</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- BARRA INFERIOR FLOTANTE DEL CARRITO -->
+    <footer id="floating-cart" class="floating-cart hidden">
+      <div class="cart-summary" id="btn-open-cart">
+        <div class="cart-badge-wrap">
+          <span class="cart-icon">🛒</span>
+          <span id="cart-item-count" class="cart-count">0</span>
+        </div>
+        <div class="cart-price-info">
+          <span class="cart-label">Tu Pedido</span>
+          <span id="cart-total-price" class="cart-total">0.00 €</span>
+        </div>
+      </div>
+      <button id="btn-checkout" class="btn btn-checkout">
+        Ver Pedido ➔
+      </button>
+    </footer>
+
+    <!-- MODAL / DRAWER DE CHECKOUT -->
+    <div id="checkout-modal" class="checkout-drawer hidden">
+      <div class="drawer-overlay" id="drawer-overlay"></div>
+      <div class="drawer-panel">
+        <div class="drawer-header">
+          <h2 class="drawer-title">Confirmar Pedido</h2>
+          <button id="btn-close-drawer" class="btn-close">&times;</button>
+        </div>
+
+        <div class="drawer-body">
+          <!-- CASO 1: CLIENTE EN MESA (QR) -->
+          <div id="box-mesa-header" style="display: none; background: #0f172a; border: 1px solid #dc2626; border-radius: 14px; padding: 12px; margin-bottom: 14px; text-align: center;">
+            <div style="font-size: 1.5rem; margin-bottom: 2px;">🍽️</div>
+            <strong id="mesa-header-text" style="color: #f87171; font-size: 1rem;">Comanda para Mesa 1</strong>
+            <p style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">Tu pedido se enviará directamente a la cocina del restaurante.</p>
+          </div>
+
+          <!-- CASO 2: CLIENTE ONLINE DESDE CASA (Selector de 2 opciones) -->
+          <div id="box-tipo-selector" class="form-group" style="margin-bottom: 14px;">
+            <label style="font-weight: 700; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--color-gold);">Tipo de pedido online:</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button type="button" class="tipo-btn active" data-tipo="domicilio" style="padding: 10px 6px; font-size: 0.82rem; font-weight: 700; border-radius: 12px; border: 1px solid #dc2626; background: #dc2626; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                🛵 A Domicilio
+              </button>
+              <button type="button" class="tipo-btn" data-tipo="recoger" style="padding: 10px 6px; font-size: 0.82rem; font-weight: 700; border-radius: 12px; border: 1px solid #334155; background: #1e293b; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                🥡 Para Recoger
+              </button>
+            </div>
+          </div>
+
+          <!-- CAMPO NOMBRE -->
+          <div class="form-group" id="box-nombre">
+            <label for="cliente-nombre">Nombre de contacto:</label>
+            <input type="text" id="cliente-nombre" placeholder="Tu Nombre y Apellidos" class="input-field">
+          </div>
+
+          <!-- CAMPO TELÉFONO -->
+          <div class="form-group" id="box-telefono">
+            <label for="cliente-telefono">Teléfono móvil:</label>
+            <input type="tel" id="cliente-telefono" placeholder="Ej: 600123456" class="input-field">
+          </div>
+
+          <!-- CAMPO DIRECCIÓN -->
+          <div class="form-group" id="box-direccion">
+            <label for="cliente-direccion">Dirección de entrega:</label>
+            <input type="text" id="cliente-direccion" placeholder="Ej: C/ Mayor 12, 3ºB" class="input-field">
+          </div>
+
+          <!-- OBSERVACIONES -->
+          <div class="form-group">
+            <label for="cliente-observaciones">Observaciones o Alergias (Opcional):</label>
+            <input type="text" id="cliente-observaciones" placeholder="Ej: Sin orégano, timbre roto..." class="input-field">
+          </div>
+
+          <h3 class="items-title">Pizzas seleccionadas:</h3>
+          <div id="checkout-items-list" class="checkout-items">
+            <!-- Items renderizados dinámicamente -->
+          </div>
+
+          <div class="checkout-totals">
+            <div class="total-row">
+              <span>Total:</span>
+              <strong id="checkout-total-val" class="total-amount">0.00 €</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="drawer-footer">
+          <button id="btn-send-order" class="btn btn-primary btn-block">
+            🚀 Enviar Pedido a Cocina
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MODAL DE INSTALACIÓN PWA -->
+  <div id="pwa-install-modal" class="modal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 9999; display: none; align-items: center; justify-content: center; padding: 20px;">
+    <div style="background: #1e293b; color: white; border-radius: 24px; padding: 24px; max-width: 380px; width: 100%; border: 1px solid #334155; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); text-align: center;">
+      <div style="font-size: 3rem; margin-bottom: 12px;">📲</div>
+      <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 8px;">Instalar Pizzería Bella Napoli</h3>
+      <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 20px; line-height: 1.4;">Ten la carta digital y tus pedidos a mano en pantalla completa con icono directo en tu móvil.</p>
+
+      <div style="background: #0f172a; border-radius: 16px; padding: 16px; text-align: left; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 20px; border: 1px solid #334155;">
+        <p style="font-weight: 700; color: #f87171; margin-bottom: 8px;">👉 Pasos para instalar en 3 segundos:</p>
+        <ol style="margin-left: 18px; line-height: 1.6;">
+          <li>Toca el menú del navegador (los <strong>3 puntos ⋮</strong> en Chrome o botón <strong>Compartir ⬆️</strong> en iPhone).</li>
+          <li>Selecciona <strong>"Instalar aplicación"</strong> o <strong>"Añadir a pantalla de inicio"</strong>.</li>
+          <li>¡Listo! Se creará el icono de la app en tu teléfono.</li>
+        </ol>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <button onclick="closeInstallModal()" style="width: 100%; background: #dc2626; color: white; border: none; padding: 12px; border-radius: 14px; font-weight: 700; font-size: 0.95rem; cursor: pointer;">
+          ¡Entendido!
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="main.js"></script>
+  <script>
+    window.deferredPrompt = null;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.deferredPrompt = e;
+      console.log('📱 [PWA] Evento beforeinstallprompt capturado con éxito');
+    });
+
+    function handlePwaInstallClick() {
+      if (window.deferredPrompt) {
+        window.deferredPrompt.prompt();
+        window.deferredPrompt.userChoice.then((choiceResult) => {
+          console.log('User choice:', choiceResult.outcome);
+          window.deferredPrompt = null;
+        });
+      } else {
+        const modal = document.getElementById('pwa-install-modal');
+        if (modal) {
+          modal.classList.remove('hidden');
+          modal.style.display = 'flex';
+        }
+      }
+    }
+
+    function closeInstallModal() {
+      const modal = document.getElementById('pwa-install-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    }
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => console.log('📱 [PWA] Service Worker activo:', reg.scope))
+          .catch(err => console.warn('⚠️ [PWA] SW:', err));
+      });
+    }
+  </script>
+</body>
+</html>
