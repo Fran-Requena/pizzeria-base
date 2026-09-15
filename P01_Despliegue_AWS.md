@@ -13,16 +13,21 @@
 
 ---
 
-## Bloque 1: Registro y Activación del Laboratorio (15 min)
+## Bloque 1: Registro, Test de Seguridad y Activación del Lab (20 min)
 
 1. Abre tu bandeja de entrada del correo del instituto (`@alu.edu.gva.es`).
 2. Localiza el correo de invitación de **Instructure Canvas / AWS Academy** y pulsa en **Get Started** o **Join**.
-3. Completa el registro creando tu contraseña para acceder a la plataforma.
-4. Dentro del curso, navega a **Modules** -> **Learner Lab**.
-5. Pulsa el botón **Start Lab**.  
-   > ⏳ Espera hasta que el círculo situado junto a la etiqueta **AWS** pase de rojo/amarillo a **verde**.
-6. Haz clic sobre el texto **AWS** (con el círculo verde) para abrir la **Consola de Administración de AWS**.
-7. Verifica en la esquina superior derecha que la región activa sea **N. Virginia (`us-east-1`)**.
+3. Crea tu contraseña para acceder a la plataforma.
+4. En el menú de la izquierda, haz clic en **Contenidos** (o *Modules*).
+5. **EL TEST OBLIGATORIO:** Verás que el laboratorio está bloqueado. Para abrirlo, despliega el módulo **"Conformidad y seguridad del Laboratorio"**.
+   * Abre y lee la "Guía del alumno...".
+   * Entra en la **Prueba de conocimientos**. Es un test de normas de uso del laboratorio (prohibido minar criptomonedas, prohibido lanzar ataques, etc.).
+   * Debes obtener al menos un **70/100** (dispones de intentos ilimitados).
+6. Una vez aprobado, se desbloqueará el módulo inferior. Haz clic en **Lanzamiento del Laboratorio para el alumnado de AWS Academy**.
+7. En la nueva pantalla (Vocareum), acepta los Términos de Servicio abajo del todo (**I Agree**).
+8. Pulsa el botón superior **Start Lab** y espera a que el círculo situado junto a la etiqueta **AWS** pase de rojo/amarillo a **verde**.
+9. Haz clic sobre el texto **AWS** (con el círculo verde) para abrir la Consola de Administración de AWS.
+10. Verifica en la esquina superior derecha que la región activa sea **N. Virginia (`us-east-1`)**.
 
 ---
 
