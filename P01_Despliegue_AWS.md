@@ -41,7 +41,7 @@ El desarrollo se realizará sobre una bifurcación independiente del repositorio
 1. En el buscador superior de la consola de AWS, introducir **EC2** y acceder al servicio.
 2. En el panel de navegación izquierdo, sección **Red y seguridad**, seleccionar **Grupos de seguridad**.
 3. Pulsar **Crear grupo de seguridad**:
-   * **Nombre:** `sg-pizzeria`
+   * **Nombre:** `secgroup-pizzeria` *(Nota: AWS no permite nombres que comiencen por el prefijo reservado `sg-`)*
    * **Descripción:** `Reglas de entrada para servidor web y base de datos`
 4. En **Reglas de entrada** (*Inbound rules*), añadir las siguientes reglas (seleccionando en origen `0.0.0.0/0` o *Cualquier lugar - IPv4*):
 
@@ -61,7 +61,7 @@ El desarrollo se realizará sobre una bifurcación independiente del repositorio
    * **Imágenes de SO (AMI):** Seleccionar **Ubuntu** (Ubuntu Server 24.04 o 22.04 LTS, 64-bit x86).
    * **Tipo de instancia:** Seleccionar **`t3.small`** *(la opción 'micro' carece de los recursos necesarios para orquestar los contenedores).*
    * **Par de claves:** Seleccionar la clave predeterminada (`vockey`).
-   * **Configuraciones de red:** Pulsar en *Editar* $\rightarrow$ *Seleccionar grupo de seguridad existente* $\rightarrow$ Seleccionar el grupo `sg-pizzeria`.
+   * **Configuraciones de red:** Pulsar en *Editar* $\rightarrow$ *Seleccionar grupo de seguridad existente* $\rightarrow$ Seleccionar el grupo `secgroup-pizzeria`.
    * **Configurar almacenamiento:** Asignar **20 GiB** al volumen principal (gp3).
 3. Pulsar **Lanzar instancia**.
 
@@ -159,3 +159,11 @@ Para preservar los créditos asignados sin comprometer la persistencia de los da
    ```
 3. En la consola de AWS: Seleccionar la instancia $\rightarrow$ **Estado de la instancia** $\rightarrow$ **Detener instancia**.
 4. En el panel de Vocareum / AWS Academy: Pulsar **End Lab** o **Stop Lab**.
+
+---
+
+## SIGUIENTE PASO: Ciclo de Vida y Desarrollo Continuo
+
+Una vez desplegada la infraestructura base, consulta la guía oficial de metodología de trabajo para realizar cambios y mejoras en la aplicación:
+👉 **[WORKFLOW.md: Flujo de Desarrollo y Actualización de Despliegues](WORKFLOW.md)**
+
