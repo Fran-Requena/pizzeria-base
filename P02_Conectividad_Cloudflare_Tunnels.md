@@ -72,21 +72,30 @@ Abre el archivo de configuración `.env` con el editor de texto `nano`:
 nano .env
 ```
 
-#### Guía de uso y atajos de teclado en `nano`:
-1. **Navegar:** Usa las **flechas del teclado** (↓ ↑) para desplazarte hacia abajo hasta localizar la línea:
+#### Procedimiento para pegar, guardar y salir en `nano`:
+
+1. **Navegar:** Usa las **flechas del teclado** (↓ ↑) para desplazarte hasta situar el cursor justo a la derecha de:
    ```env
-   # 2. CONECTIVIDAD CLOUDFLARE ZERO TRUST (TUNNEL)
    CLOUDFLARE_TUNNEL_TOKEN=
    ```
-2. **Pegar el token:** Sitúa el cursor justo a la derecha del signo `=` y pega tu token copiado de Aules:
-   - En la consola web de AWS EC2: Pulsa `Ctrl + V` o haz **clic derecho** con el ratón sobre la terminal para pegar.
-   - Asegúrate de que no queden espacios en blanco antes o después del token.
-3. **Guardar los cambios:**
-   - Pulsa la combinación de teclas **`Ctrl + O`** (la letra 'O', de *Output/WriteOut*).
-   - En la parte inferior aparecerá: `File Name to Write: .env`. Presiona la tecla **`Enter`** para confirmar.
-4. **Salir del editor:**
-   - Pulsa **`Ctrl + X`** para cerrar `nano` y volver al prompt de la terminal (`ubuntu@ip:...$`).
-   - *(Si en algún momento te equivocas y quieres salir sin guardar cambios: pulsa `Ctrl + X` y ante la pregunta de guardar responde pulsando la tecla `N`).*
+2. **Pegar el token:**
+   - En la consola web de AWS EC2: Pulsa **`Ctrl + V`** o haz **clic derecho** con el ratón sobre la terminal para pegar el token copiado de Aules.
+   - Verifica que el token quede pegado a continuación del `=` sin espacios en blanco.
+3. **Guardar y salir en un solo paso:**
+   > 💡 **¿Por qué no usar `Ctrl + O`?** En navegadores como Google Chrome o Edge, el atajo `Ctrl + O` es interceptado por el propio navegador para abrir un archivo local de tu ordenador. El método estándar e infalible en terminales web es:
+   - Pulsa **`Ctrl + X`** (Exit).
+   - En la parte inferior de la pantalla, nano preguntará: `Save modified buffer?` (¿Deseas guardar los cambios?).
+   - Pulsa la tecla **`Y`** (de *Yes*).
+   - Presiona la tecla **`Enter`** para confirmar el nombre del archivo (`.env`).
+   - El archivo quedará guardado y volverás al prompt de la terminal (`ubuntu@ip:...$`).
+
+---
+
+#### 💡 Alternativa rápida sin editores (Comando directo)
+Si algún alumno experimenta problemas con los atajos de teclado de su navegador, puede insertar su token directamente ejecutando este comando (reemplazando `TU_TOKEN_AQUI` por su token de Aules):
+```bash
+sed -i 's|^CLOUDFLARE_TUNNEL_TOKEN=.*|CLOUDFLARE_TUNNEL_TOKEN=TU_TOKEN_AQUI|' .env
+```
 
 ---
 
