@@ -119,7 +119,7 @@ Comprueba que los contenedores se han recreado correctamente y están saludables
 docker compose -f docker-compose.prod.yml ps
 ```
 
-Accede a la IP pública de tu servidor (`http://<IP_PUBLICA>`) forzando el refresco de caché en el navegador (`Ctrl + F5` o `Cmd + Shift + R`) para verificar que las modificaciones ya están en producción.
+Accede a tu URL pública segura (`https://daw-XX.guillermofoix.org` o a la IP directa de AWS) forzando el refresco de caché en el navegador (`Ctrl + F5` o `Cmd + Shift + R`) para verificar que las modificaciones ya están en producción.
 
 ---
 

@@ -12,11 +12,10 @@ El entorno de AWS Academy Learner Lab requiere la aceptación de los términos d
 
 1. Acceder al correo electrónico institucional y localizar la invitación de **Instructure Canvas / AWS Academy**. Proceder al registro y creación de credenciales.
 2. Acceder al curso en Canvas y navegar a la sección **Contenidos** (o *Modules*).
-3. **Prueba de conocimientos obligatoria:** 
-   * Desplegar el módulo **"Conformidad y seguridad del Laboratorio"**.
-   * Realizar la **Prueba de conocimientos** sobre las políticas de uso aceptable del entorno. Es necesario obtener una calificación mínima de **70/100** para avanzar (se permiten múltiples intentos).
-4. Tras superar la prueba, acceder al enlace **"Lanzamiento del Laboratorio para el alumnado de AWS Academy"**.
-5. En la interfaz de Vocareum, aceptar los términos de servicio (botón **I Agree** situado en la parte inferior).
+3. *(Opcional)* **Prueba de conocimientos:** 
+   * Si lo deseas, puedes consultar el módulo **"Conformidad y seguridad del Laboratorio"** y realizar el cuestionario orientativo sobre las políticas de uso aceptable del entorno. No es obligatoria para arrancar el laboratorio.
+4. Acceder al enlace **"Lanzamiento del Laboratorio para el alumnado de AWS Academy"**.
+5. En la interfaz de Vocareum, aceptar los términos de servicio (botón **I Agree** situado en la parte inferior si es el primer acceso).
 6. En la parte superior derecha, pulsar **Start Lab**. Cuando el indicador situado junto a la etiqueta "AWS" cambie a color **verde**, pulsar sobre el texto "AWS" para abrir la Consola de Administración.
 7. Verificar en la esquina superior derecha que la región activa sea **N. Virginia (`us-east-1`)**.
 
@@ -41,16 +40,20 @@ El desarrollo se realizará sobre una bifurcación independiente del repositorio
 1. En el buscador superior de la consola de AWS, introducir **EC2** y acceder al servicio.
 2. En el panel de navegación izquierdo, sección **Red y seguridad**, seleccionar **Grupos de seguridad**.
 3. Pulsar **Crear grupo de seguridad**:
-   * **Nombre:** `secgroup-pizzeria` *(Nota: AWS no permite nombres que comiencen por el prefijo reservado `sg-`)*
-   * **Descripción:** `Reglas de entrada para servidor web y base de datos`
+   * **Nombre:** `pizzeria-secgroup`
+   * **Descripción:** `Reglas de entrada para servidor web de la pizzeria`
+
+> ⚠️ **Aviso crítico de nomenclatura en AWS:**  
+> **No utilices nombres que empiecen por `sg-`** (como `sg-pizzeria`). El prefijo `sg-` está estrictamente reservado por Amazon Web Services para los identificadores de sistema (ej. `sg-0123456789abcdef0`) y la consola dará error impidiéndote crearlo. Utiliza siempre `pizzeria-secgroup`.
+
 4. En **Reglas de entrada** (*Inbound rules*), añadir las siguientes reglas (seleccionando en origen `0.0.0.0/0` o *Cualquier lugar - IPv4*):
 
 | Tipo | Intervalo de puertos | Propósito |
 | :--- | :--- | :--- |
-| **SSH** | `22` | Acceso por terminal remota. |
-| **HTTP** | `80` | Tráfico del portal web y enrutamiento a la API. |
-| **HTTPS** | `443` | Tráfico cifrado. |
-| **TCP personalizado** | `8082` | Acceso a la interfaz de gestión de base de datos (Adminer). |
+| **SSH** | `22` | Acceso por terminal remota (EC2 Instance Connect). |
+| **HTTP** | `80` | Tráfico web directo y comprobación inicial por IP. |
+
+*(Nota de seguridad perimetral: Gracias a la arquitectura de proxy inverso unificado y Cloudflare Tunnels, **no es necesario abrir puertos adicionales para la base de datos**; PostgreSQL y DbGate se comunican internamente y el túnel opera por conexión saliente cifrada).*
 
 5. Pulsar **Crear grupo de seguridad**.
 
@@ -61,7 +64,7 @@ El desarrollo se realizará sobre una bifurcación independiente del repositorio
    * **Imágenes de SO (AMI):** Seleccionar **Ubuntu** (Ubuntu Server 24.04 o 22.04 LTS, 64-bit x86).
    * **Tipo de instancia:** Seleccionar **`t3.small`** *(la opción 'micro' carece de los recursos necesarios para orquestar los contenedores).*
    * **Par de claves:** Seleccionar la clave predeterminada (`vockey`).
-   * **Configuraciones de red:** Pulsar en *Editar* $\rightarrow$ *Seleccionar grupo de seguridad existente* $\rightarrow$ Seleccionar el grupo `secgroup-pizzeria`.
+   * **Configuraciones de red:** Pulsar en *Editar* $\rightarrow$ *Seleccionar grupo de seguridad existente* $\rightarrow$ Seleccionar el grupo `pizzeria-secgroup`.
    * **Configurar almacenamiento:** Asignar **20 GiB** al volumen principal (gp3).
 3. Pulsar **Lanzar instancia**.
 
@@ -110,7 +113,7 @@ Generar el archivo `.env` a partir de la plantilla preconfigurada para producci�
 ```bash
 cp .env.example .env
 ```
-*(Nota: La plantilla ya viene configurada con los puertos estándar `HTTP_PORT=80` y `HTTPS_PORT=443`).*
+*(Nota: La plantilla ya viene preconfigurada con el puerto estándar `HTTP_PORT=80` y las credenciales seguras).*
 
 ---
 
@@ -121,7 +124,7 @@ Orquestar y compilar los contenedores en segundo plano:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Verificar que los 5 servicios se encuentren en estado **Up**:
+Verificar que los servicios se encuentren en estado **Up**:
 
 ```bash
 docker compose -f docker-compose.prod.yml ps
@@ -144,7 +147,8 @@ Comprobar el funcionamiento desde un navegador web mediante las siguientes direc
 | **Portal Web & Cocina KDS** | `http://<IP_PUBLICA>` | Interfaz comercial interactiva y panel de pedidos de cocina. |
 | **Diagnóstico de la API** | `http://<IP_PUBLICA>/api/health` | Respuesta JSON: `{"status":"UP","database":{"connected":true}}`. |
 | **WebApp Móvil Clientes** | `http://<IP_PUBLICA>/app/` | Aplicación PWA para clientes y lectura de mesas QR. |
-| **Gestión de Base de Datos** | `http://<IP_PUBLICA>:8082` | Interfaz Adminer (Servidor: `db`, Usuario: `pizzeria_user`). |
+| **Gestión de Base de Datos (DbGate)** | `http://<IP_PUBLICA>/dbgate/` | Gestor visual DbGate con la base de datos `pizzeria_db` ya autoconectada. |
+
 
 ---
 
