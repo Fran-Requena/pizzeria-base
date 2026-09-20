@@ -132,7 +132,7 @@ Abre el navegador web en el ordenador del instituto (o en tu móvil/portátil) y
 ### Prueba en el Gestor de Base de Datos (DbGate):
 1. Entra a `https://daw-XX.guillermofoix.org/dbgate/`.
 2. En el panel izquierdo verás la conexión preconfigurada **Pizzería DB**.
-3. Haz clic en **Tables** $\rightarrow$ selecciona la tabla `pizzas` $\rightarrow$ haz clic derecho y pulsa **Data**.
+3. Haz clic en **Tables** → selecciona la tabla `pizzas` → haz clic derecho y pulsa **Data**.
 4. Podrás visualizar en tiempo real los registros de la pizzería y ejecutar consultas SQL directamente desde el navegador, sin instalar ningún software en tu ordenador.
 
 ---
@@ -142,7 +142,7 @@ Abre el navegador web en el ordenador del instituto (o en tu móvil/portátil) y
 Para comprobar que el sistema es totalmente autónomo y no depende de la IP de Amazon:
 
 1. Ve a la consola de AWS EC2.
-2. Selecciona tu instancia $\rightarrow$ **Estado de la instancia** $\rightarrow$ **Reiniciar instancia** (o *Detener* y volver a *Iniciar*).
+2. Selecciona tu instancia → **Estado de la instancia** → **Reiniciar instancia** (o *Detener* y volver a *Iniciar*).
 3. Espera 1 minuto a que el estado vuelva a ser *En ejecución*.
 4. Observa que Amazon le ha asignado una **dirección IP pública totalmente diferente**.
 5. **No toques nada en la máquina.** Simplemente refresca en tu navegador:
@@ -151,16 +151,13 @@ Para comprobar que el sistema es totalmente autónomo y no depende de la IP de A
 
 ---
 
-## FASE 5: Procedimiento de Cierre de Sesión
+## FASE 5: Procedimiento de Cierre y Ahorro de Créditos
 
 Para ahorrar tus créditos de AWS Academy sin perder ningún dato:
 
-1. Detén los contenedores en la terminal:
-   ```bash
-   docker compose -f docker-compose.prod.yml stop
-   ```
-2. En la consola de AWS: Selecciona la instancia $\rightarrow$ **Detener instancia**.
-3. En el panel de Vocareum / AWS Academy: Pulsa **Stop Lab**.
+1. En la consola de AWS: Selecciona la instancia → **Estado de la instancia** → **Detener instancia** (_Stop instance_).
+2. Espera a que el estado pase a **Detenido** (_Stopped_).
+3. Ya puedes cerrar el navegador. Recuerda: **NUNCA pulses "End Lab"** en el panel de Vocareum para no destruir tus recursos.
 
 ---
 

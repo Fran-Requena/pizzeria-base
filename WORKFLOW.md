@@ -85,7 +85,7 @@ Con el código ya auditado y subido a GitHub, se traslada la nueva versión a la
 
 ### 3.1 Conexión a la Instancia EC2
 1. Accede a la Consola de AWS EC2.
-2. Localiza tu instancia `Pizzeria-TuNombre` y pulsa **Conectar** $\rightarrow$ **EC2 Instance Connect** (o mediante tu clave SSH si la tienes configurada).
+2. Localiza tu instancia `Pizzeria-TuNombre` y pulsa **Conectar** → **EC2 Instance Connect** (o mediante tu clave SSH si la tienes configurada).
 3. Abre la terminal en el directorio del proyecto:
    ```bash
    cd ~/pizzeria-base

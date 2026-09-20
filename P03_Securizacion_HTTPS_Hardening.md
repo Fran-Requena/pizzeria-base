@@ -45,7 +45,7 @@ Cada alumno dispone de un certificado SSL/TLS oficial emitido para su subdominio
    https://daw-XX.guillermofoix.org
    ```
 2. Haz clic sobre el **icono del candado** situado a la izquierda de la barra de direcciones.
-3. Selecciona **La conexión es segura** $\rightarrow$ **El certificado es válido** (o *Ver certificado*).
+3. Selecciona **La conexión es segura** → **El certificado es válido** (o *Ver certificado*).
 4. **Analiza los campos del certificado digital:**
    * **Nombre común (CN):** Observa que cubre tu dominio (`guillermofoix.org` o `*.guillermofoix.org`).
    * **Autoridad emisora (CA):** Comprueba que ha sido emitido por una entidad de certificación de primer nivel (como *Google Trust Services* o *Let's Encrypt*).
@@ -97,7 +97,7 @@ El frontend móvil de clientes (`frontend-qr-app`) está desarrollado como una *
    https://daw-XX.guillermofoix.org/app/
    ```
 2. Abre las **Herramientas de Desarrollador** del navegador (`F12` o `Ctrl + Shift + I`).
-3. Ve a la pestaña **Application** (o *Almacenamiento*) $\rightarrow$ **Service Workers**.
+3. Ve a la pestaña **Application** (o *Almacenamiento*) → **Service Workers**.
 4. **Verificación:** Comprueba que el Service Worker se encuentra en estado **Activated and is running** (icono verde).
    > ⚠️ **Nota didáctica:** Si intentaras acceder a esta misma aplicación a través de HTTP plano (`http://...`), los navegadores modernos **desactivan y bloquean automáticamente el Service Worker**, impidiendo que la app funcione offline o se instale en el teléfono.
 
@@ -138,12 +138,9 @@ Para demostrarlo empíricamente:
 
 ---
 
-## FASE 5: Procedimiento de Parada y Ahorro de Saldo
+## FASE 5: Procedimiento de Cierre y Ahorro de Saldo
 
 Una vez finalizada la práctica:
-1. Detén los contenedores en la terminal:
-   ```bash
-   docker compose -f docker-compose.prod.yml stop
-   ```
-2. En la consola de AWS: Selecciona tu máquina $\rightarrow$ **Detener instancia**.
-3. En Vocareum / AWS Academy: Pulsa **Stop Lab**.
+1. En la consola de AWS: Selecciona la instancia → **Estado de la instancia** → **Detener instancia** (_Stop instance_).
+2. Espera a que el estado pase a **Detenido** (_Stopped_).
+3. Cierra el navegador. Recuerda: **NUNCA pulses "End Lab"** en el panel de Vocareum si deseas conservar tu trabajo para futuras sesiones.
