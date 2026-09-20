@@ -83,6 +83,7 @@ services:
     restart: unless-stopped
     environment:
       - WEB_ROOT=/dbgate
+      - SKIP_ALL_AUTH=true
       - CONNECTIONS=pizzeria
       - CONNECTION_pizzeria_LABEL=Pizzería DB
       - CONNECTION_pizzeria_SERVER=db

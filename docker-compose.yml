@@ -90,6 +90,7 @@ services:
     container_name: pizzeria-dbgate
     restart: unless-stopped
     environment:
+      - SKIP_ALL_AUTH=true
       - CONNECTIONS=pizzeria
       - CONNECTION_pizzeria_LABEL=Pizzería DB Local
       - CONNECTION_pizzeria_SERVER=db
