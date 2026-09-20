@@ -72,22 +72,16 @@ Abre el archivo de configuración `.env` con el editor de texto `nano`:
 nano .env
 ```
 
-#### Procedimiento para pegar, guardar y salir en `nano`:
+#### Guía rápida de `nano` para insertar el token en el `.env`:
 
-1. **Navegar:** Usa las **flechas del teclado** (↓ ↑) para desplazarte hasta situar el cursor justo a la derecha de:
-   ```env
-   CLOUDFLARE_TUNNEL_TOKEN=
-   ```
-2. **Pegar el token:**
-   - En la consola web de AWS EC2: Pulsa **`Ctrl + V`** o haz **clic derecho** con el ratón sobre la terminal para pegar el token copiado de Aules.
-   - Verifica que el token quede pegado a continuación del `=` sin espacios en blanco.
-3. **Guardar y salir en un solo paso:**
-   > 💡 **¿Por qué no usar `Ctrl + O`?** En navegadores como Google Chrome o Edge, el atajo `Ctrl + O` es interceptado por el propio navegador para abrir un archivo local de tu ordenador. El método estándar e infalible en terminales web es:
-   - Pulsa **`Ctrl + X`** (Exit).
-   - En la parte inferior de la pantalla, nano preguntará: `Save modified buffer?` (¿Deseas guardar los cambios?).
-   - Pulsa la tecla **`Y`** (de *Yes*).
-   - Presiona la tecla **`Enter`** para confirmar el nombre del archivo (`.env`).
-   - El archivo quedará guardado y volverás al prompt de la terminal (`ubuntu@ip:...$`).
+* **Abrir el archivo:** Escribe `nano .env` en la terminal y pulsa `Enter`.
+* **Mover el cursor:** Usa las **flechas del teclado** para situarte justo después del signo igual en `CLOUDFLARE_TUNNEL_TOKEN=`.
+  * *Atajo útil:* **`Ctrl + E`** te lleva directamente al final de la línea actual.
+* **Pegar el token:** Haz **clic derecho** con el ratón sobre la terminal, o pulsa **`Ctrl + Shift + V`** (o **`Shift + Insert`**).
+  * *Precaución:* No uses solo `Ctrl + V`, ya que en `nano` dentro de Linux esa combinación ejecuta la acción de *"Avanzar página"* (`^V`).
+* **Guardar los cambios:** Pulsa **`Ctrl + O`** (letra 'O') y presiona **`Enter`** para confirmar la sobrescritura del archivo `.env`.
+  * *Nota para navegadores web:* Si tu navegador (Chrome o Edge) intercepta `Ctrl + O` abriendo una ventana de tu PC, puedes guardar y salir pulsando directamente **`Ctrl + X`**, respondiendo **`Y`** (Yes) y pulsando **`Enter`**.
+* **Salir del editor:** Pulsa **`Ctrl + X`** para cerrar `nano` y regresar a la terminal (`ubuntu@ip:...$`).
 
 ---
 
