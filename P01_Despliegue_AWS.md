@@ -163,31 +163,32 @@ Comprobar el funcionamiento desde un navegador web mediante las siguientes direc
 
 ## FASE 6: Procedimiento de Cierre y Ahorro de Créditos
 
-Para no agotar los 100$ de crédito del Learner Lab y conservar todo lo configurado para las siguientes sesiones:
+El entorno de AWS Academy Learner Lab cuenta con un temporizador de sesión de **4 horas**: si no haces nada, al cumplirse ese tiempo el laboratorio detiene automáticamente las instancias para proteger tu saldo de 100$.
 
-### 1. Detener la Instancia EC2 (Acción Principal Obligatoria)
-1. En la consola de AWS (servicio **EC2** → **Instancias**), selecciona la casilla de tu servidor `Pizzeria-TuNombre`.
-2. En la parte superior, pulsa en **Estado de la instancia** → **Detener instancia** (_Stop instance_).
-3. Espera unos instantes hasta que el estado de la instancia pase a **Detenido** (_Stopped_).
-4. En este punto, el consumo de cómputo se pausa y ya puedes cerrar la pestaña de AWS y de Vocareum. En la siguiente clase, basta con acceder a la consola y pulsar **Iniciar instancia**.
+Sin embargo, para ahorrar créditos de forma proactiva al terminar la clase o tu sesión de estudio, es recomendable detener los servicios nosotros mismos con los siguientes pasos:
 
-> ⚠️ **¡ADVERTENCIA CRÍTICA: NUNCA PULSAR "END LAB"!**  
-> En el panel de control de Vocareum / AWS Academy, **NUNCA hagas clic en el botón rojo "End Lab"**.  
-> Si pulsas *End Lab*, **se destruirá y borrará de forma irreversible** toda tu infraestructura (la máquina EC2, los volúmenes de disco y todo el código configurado). Para finalizar tu jornada de trabajo únicamente debes **Detener la instancia** en la consola de AWS y cerrar el navegador.
+### 1. Parada manual ordenada
+1. **Detener los contenedores desde la terminal:**
+   ```bash
+   docker compose -f docker-compose.prod.yml stop
+   ```
+   *(Al volver a arrancar la máquina en la siguiente sesión, los contenedores se iniciarán automáticamente gracias a la política `restart: unless-stopped` o ejecutando `docker compose -f docker-compose.prod.yml start`).*
+
+2. **Detener la instancia en la consola de AWS:**
+   - En el menú superior accede a **EC2** → **Instancias**.
+   - Selecciona la casilla de tu servidor `Pizzeria-TuNombre`.
+   - Pulsa en **Estado de la instancia** → **Detener instancia** (_Stop instance_).
+   - Cuando el estado cambie a **Detenido** (_Stopped_), el consumo de cómputo se pausa y ya puedes cerrar la pestaña del navegador.
 
 ---
 
-### 💡 Buenas prácticas de apagado (Opcional / Alumnos avanzados)
-Antes de detener la máquina desde la consola de AWS, puedes realizar un apagado ordenado de los contenedores desde la terminal remota:
+### ⚠️ Reglas importantes para no perder tu trabajo:
 
-* **Detener los servicios limpiamente:**
-  ```bash
-  docker compose -f docker-compose.prod.yml stop
-  ```
-  *(Al volver a arrancar la máquina en la próxima sesión, los contenedores se iniciarán automáticamente gracias a la política `restart: unless-stopped` o ejecutando `docker compose -f docker-compose.prod.yml start`).*
+* **NUNCA pulsar "End Lab":**  
+  En el panel de control de Vocareum / AWS Academy, **jamás hagas clic en el botón rojo "End Lab"**. Si lo pulsas, **se destruirá y borrará de forma irreversible** toda tu infraestructura (la máquina EC2, los volúmenes de disco y todo el código configurado). Para finalizar tu jornada únicamente debes detener la instancia en AWS y cerrar la pestaña.
 
-* **Preservación de los datos en volumen:**  
-  Evita siempre ejecutar `docker compose down -v`. El modificador `-v` (_volumes_) eliminaría el volumen persistente `pizzeria_prod_pgdata`, perdiéndose la base de datos de la pizzería.
+* **No utilizar `docker compose down -v`:**  
+  El modificador `-v` (_volumes_) eliminaría el volumen persistente `pizzeria_prod_pgdata`, provocando la pérdida de la base de datos con los pedidos y productos creados.
 
 ---
 

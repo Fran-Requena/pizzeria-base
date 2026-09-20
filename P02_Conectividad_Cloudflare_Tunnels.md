@@ -153,11 +153,14 @@ Para comprobar que el sistema es totalmente autónomo y no depende de la IP de A
 
 ## FASE 5: Procedimiento de Cierre y Ahorro de Créditos
 
-Para ahorrar tus créditos de AWS Academy sin perder ningún dato:
+El Learner Lab detiene automáticamente las instancias tras **4 horas** de sesión, pero para ahorrar créditos al finalizar tu trabajo:
 
-1. En la consola de AWS: Selecciona la instancia → **Estado de la instancia** → **Detener instancia** (_Stop instance_).
-2. Espera a que el estado pase a **Detenido** (_Stopped_).
-3. Ya puedes cerrar el navegador. Recuerda: **NUNCA pulses "End Lab"** en el panel de Vocareum para no destruir tus recursos.
+1. Detén los contenedores desde la terminal:
+   ```bash
+   docker compose -f docker-compose.prod.yml stop
+   ```
+2. En la consola de AWS: Selecciona la instancia → **Estado de la instancia** → **Detener instancia** (_Stop instance_).
+3. Cierra el navegador. Recuerda: **NUNCA pulses "End Lab"** en Vocareum para no destruir tus recursos.
 
 ---
 

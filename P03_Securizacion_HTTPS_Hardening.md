@@ -140,7 +140,11 @@ Para demostrarlo empíricamente:
 
 ## FASE 5: Procedimiento de Cierre y Ahorro de Saldo
 
-Una vez finalizada la práctica:
-1. En la consola de AWS: Selecciona la instancia → **Estado de la instancia** → **Detener instancia** (_Stop instance_).
-2. Espera a que el estado pase a **Detenido** (_Stopped_).
+El Learner Lab detiene automáticamente las instancias tras **4 horas** de sesión, pero para ahorrar créditos al finalizar tu práctica:
+
+1. Detén los contenedores desde la terminal:
+   ```bash
+   docker compose -f docker-compose.prod.yml stop
+   ```
+2. En la consola de AWS: Selecciona la instancia → **Estado de la instancia** → **Detener instancia** (_Stop instance_).
 3. Cierra el navegador. Recuerda: **NUNCA pulses "End Lab"** en el panel de Vocareum si deseas conservar tu trabajo para futuras sesiones.
