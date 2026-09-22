@@ -48,7 +48,7 @@ services:
       - pizzeria-network
 
   # 3. WebApp Móvil PWA para Clientes y Mesas QR
-  frontend-qr:
+  frontend-qr-app:
     build:
       context: ./frontend-qr-app
       dockerfile: Dockerfile
