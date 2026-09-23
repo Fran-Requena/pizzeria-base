@@ -349,26 +349,63 @@ curl -s http://localhost/api/health
 > **¿Por qué DbGate muestra `API error: DBGM-00309 Database connection closed`?**  
 > Si abres `/dbgate/` tras apagar `pizzeria-prod-db`, verás un error de conexión en la conexión predeterminada. **¡Esto es la prueba definitiva de que la base de datos local de Docker está 100% apagada!** DbGate estaba configurado para conectarse al contenedor `db:5432`.
 
-Para ver y consultar tus tablas de AWS RDS directamente en DbGate tienes dos opciones:
+Para conectar DbGate a tu nueva base de datos en AWS RDS, es imprescindible habilitar el soporte de cifrado SSL, ya que Amazon RDS rechaza cualquier intento de conexión en texto plano con el error:
+`no pg_hba.conf entry for host "...", no encryption`.
 
-#### Opción A: Añadir la conexión a RDS desde la interfaz de DbGate (Recomendada)
-1. En el panel izquierdo de DbGate (`https://daw-XX.guillermofoix.org/dbgate/`), pulsa en el botón **`+`** (*New connection*).
-2. Selecciona **PostgreSQL**.
-3. Rellena los parámetros con los datos de tu RDS:
-   - **Server / Host:** Tu Endpoint de RDS (`pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com`)
-   - **Port:** `5432`
-   - **Database:** `pizzeria_db`
-   - **User:** `pizzeria_user`
-   - **Password:** `pizzeria_pass_2026!`
-   - **Display name / Label:** `AWS RDS Bella Napoli`
-4. Haz clic en **Connect** (o **Save**).
-5. Podrás desplegar las tablas (`pedidos`, `pizzas`, `ingredientes`), ver los nuevos registros insertados por la web y ejecutar consultas SQL directamente sobre la nube de Amazon.
+Sin embargo, cuando DbGate tiene conexiones inyectadas por variables de entorno (`CONNECTIONS=pizzeria`):
+1. **Bloquea la interfaz gráfica** e impide crear o editar conexiones desde el navegador.
+2. **Ignora el parámetro SSL** porque su lector de variables de entorno no soporta flags de cifrado.
 
-#### Opción B: Actualizar el contenedor DbGate con la variable del `.env`
-Si actualizas `docker-compose.db.yml` para que `SERVER_pizzeria=${DB_HOST:-db}`, bastará con relanzar el contenedor:
+La solución limpia y definitiva es **simplificar `docker-compose.db.yml`** (dejando DbGate libre de variables estáticas) e **inyectar la conexión con `useSsl: true`** en su archivo de configuración interno:
+
+#### Paso 1: Limpiar `docker-compose.db.yml` en tu EC2
+Abre el archivo:
+```bash
+nano ~/pizzeria-base/docker-compose.db.yml
+```
+Deja la sección `dbgate` limpia, sin la lista de variables de conexión y con `depends_on` comentado:
+```yaml
+  # 2. Gestor Visual Web de Base de Datos (DbGate)
+  dbgate:
+    image: dbgate/dbgate:latest
+    container_name: pizzeria-prod-dbgate
+    restart: unless-stopped
+    environment:
+      - WEB_ROOT=/dbgate
+      - SKIP_ALL_AUTH=true
+    volumes:
+      - pizzeria_prod_dbgate:/root/.dbgate
+    expose:
+      - "3000"
+#   depends_on:
+#     db:
+#       condition: service_healthy
+    networks:
+      - pizzeria-network
+```
+*(Guarda con `Ctrl + O`, `Enter` y sal con `Ctrl + X`).*
+
+#### Paso 2: Recrear el contenedor de DbGate
 ```bash
 docker compose -f docker-compose.db.yml up -d dbgate
 ```
+
+#### Paso 3: Inyectar la conexión con SSL a AWS RDS
+Ejecuta este comando directo en la terminal de tu EC2 para guardar la conexión con el cifrado SSL (`"useSsl": true`) activado:
+
+```bash
+docker exec -i pizzeria-prod-dbgate sh -c 'echo "{\"_id\":\"pizzeria_rds\",\"engine\":\"postgres@dbgate-plugin-postgres\",\"server\":\"pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com\",\"port\":5432,\"user\":\"pizzeria_user\",\"password\":\"pizzeria_pass_2026!\",\"defaultDatabase\":\"pizzeria_db\",\"displayName\":\"AWS RDS Bella Napoli\",\"useSsl\":true}" > /root/.dbgate/connections.jsonl'
+```
+
+Reinicia el contenedor para cargar la configuración:
+```bash
+docker compose -f docker-compose.db.yml restart dbgate
+```
+
+#### Paso 4: Verificación
+1. Abre o refresca en tu navegador: **`https://daw-XX.guillermofoix.org/dbgate/`**.
+2. Verás en el menú izquierdo la conexión **AWS RDS Bella Napoli** conectada con SSL activo.
+3. Despliega sus tablas: ¡podrás ver `pedidos`, `pizzas`, `ingredientes` y realizar consultas SQL directamente en la nube de AWS! Además, el botón para crear y editar conexiones en la interfaz web vuelve a estar 100% operativo.
 
 ---
 
