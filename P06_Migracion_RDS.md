@@ -343,6 +343,35 @@ curl -s http://localhost/api/health
 
 ---
 
+### 7. (Opcional) Visualizar y gestionar AWS RDS desde DbGate
+
+> [!NOTE]
+> **¿Por qué DbGate muestra `API error: DBGM-00309 Database connection closed`?**  
+> Si abres `/dbgate/` tras apagar `pizzeria-prod-db`, verás un error de conexión en la conexión predeterminada. **¡Esto es la prueba definitiva de que la base de datos local de Docker está 100% apagada!** DbGate estaba configurado para conectarse al contenedor `db:5432`.
+
+Para ver y consultar tus tablas de AWS RDS directamente en DbGate tienes dos opciones:
+
+#### Opción A: Añadir la conexión a RDS desde la interfaz de DbGate (Recomendada)
+1. En el panel izquierdo de DbGate (`https://daw-XX.guillermofoix.org/dbgate/`), pulsa en el botón **`+`** (*New connection*).
+2. Selecciona **PostgreSQL**.
+3. Rellena los parámetros con los datos de tu RDS:
+   - **Server / Host:** Tu Endpoint de RDS (`pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com`)
+   - **Port:** `5432`
+   - **Database:** `pizzeria_db`
+   - **User:** `pizzeria_user`
+   - **Password:** `pizzeria_pass_2026!`
+   - **Display name / Label:** `AWS RDS Bella Napoli`
+4. Haz clic en **Connect** (o **Save**).
+5. Podrás desplegar las tablas (`pedidos`, `pizzas`, `ingredientes`), ver los nuevos registros insertados por la web y ejecutar consultas SQL directamente sobre la nube de Amazon.
+
+#### Opción B: Actualizar el contenedor DbGate con la variable del `.env`
+Si actualizas `docker-compose.db.yml` para que `SERVER_pizzeria=${DB_HOST:-db}`, bastará con relanzar el contenedor:
+```bash
+docker compose -f docker-compose.db.yml up -d dbgate
+```
+
+---
+
 ## FASE 5: Próximas Paradas (Deep Dive Teórico)
 
 Has completado con éxito un despliegue Cloud-Native de 3 capas. En los próximos módulos temáticos profundizaremos en los siguientes conceptos de ingeniería:
