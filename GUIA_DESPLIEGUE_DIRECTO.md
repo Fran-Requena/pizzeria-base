@@ -205,11 +205,12 @@ Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor loca
    ```bash
    sed -i '/- CONNECTIONS=pizzeria/,/- ENGINE_pizzeria=/d' docker-compose.db.yml
    ```
+   *(Esto evita que DbGate intente conectarse al host `db` inexistente y desbloquea el gestor de conexiones con soporte SSL).*
 
 2. Crea el volumen persistente y arranca el contenedor de DbGate:
    ```bash
    docker volume create pizzeria_prod_dbgate
-   docker compose -f docker-compose.db.yml up -d dbgate
+   docker compose -f docker-compose.db.yml up -d --force-recreate dbgate
    ```
 
 3. Inyecta la conexión a RDS con `"useSsl": true`:
@@ -219,7 +220,7 @@ Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor loca
    EOF
    ```
    > [!IMPORTANT]
-   > * Sustituye el valor de `server` por tu **Punto de enlace (*Endpoint*) real** de AWS RDS.
+   > * Sustituye el valor de `server` por tu **Punto de enlace (*Endpoint*) real** de AWS RDS copiado en el paso 1.4.
    > * **Sin barra final:** El endpoint debe terminar estrictamente en `.com` (ejemplo: `...rds.amazonaws.com`), **NUNCA añadas un slash `/` al final**.
    > *(Si utilizas el comando tradicional en una sola línea con `echo`, el símbolo `\"` que ves es únicamente una barra invertida de escape para las comillas del JSON en Linux, no forma parte del endpoint).*
 
@@ -227,6 +228,12 @@ Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor loca
    ```bash
    docker compose -f docker-compose.db.yml restart dbgate
    ```
+
+5. Comprueba que el archivo se ha guardado correctamente:
+   ```bash
+   docker exec pizzeria-prod-dbgate cat /root/.dbgate/connections.jsonl
+   ```
+   *(Deberás ver una sola línea con tu endpoint limpio y `"useSsl":true`).*
 
 ---
 
@@ -283,12 +290,17 @@ Comprueba que la infraestructura está 100% operativa:
    ```
 
 3. **Verificación en el Navegador:**
-   * 👉 **Web Comercial:** `https://daw-XX.guillermofoix.org/` $\rightarrow$ Catálogo de pizzas cargado desde AWS RDS.
-   * 👉 **WebApp QR Mesas:** `https://daw-XX.guillermofoix.org/app/` $\rightarrow$ Interfaz móvil para comensales.
-   * 👉 **Gestor DbGate:** `https://daw-XX.guillermofoix.org/dbgate/` $\rightarrow$ Pide credenciales `admin` / `PizzeriaAdmin_2026!` y muestra la conexión **AWS RDS Bella Napoli** con todas las tablas accesibles.
+   * 👉 **Web Comercial & Cocina KDS:** `https://daw-XX.guillermofoix.org/` $\rightarrow$ Catálogo de pizzas cargado desde AWS RDS y panel KDS para gestionar comandas en tiempo real.
+   * 👉 **WebApp QR Mesas:** `https://daw-XX.guillermofoix.org/pedido` (o `/app/`) $\rightarrow$ Interfaz móvil para comensales.
+   * 👉 **Gestor Visual DbGate (`/dbgate/`):**
+     1. Entra a `https://daw-XX.guillermofoix.org/dbgate/`.
+     2. Introduce las credenciales de administración: Usuario `admin` | Contraseña `PizzeriaAdmin_2026!`.
+     3. En el panel izquierdo de **Conexiones**, haz doble clic sobre: 👉 **`AWS RDS Bella Napoli`**.
+     4. Se conectará mediante SSL a Amazon RDS y desplegará la carpeta **Tablas**: verás `pizzas`, `ingredientes`, `mesas`, `pedidos` y `lineas_pedido`.
+     5. Haz doble clic sobre cualquier tabla (ej. `pizzas` o `pedidos`) para ver y editar registros en vivo, o pulsa en **Nueva consulta** (*New Query*) para lanzar sentencias SQL directas contra PostgreSQL.
 
 4. **Prueba Transaccional:**
-   Haz un pedido desde la web comercial. Refresca la tabla `pedidos` en DbGate: el registro aparece guardado en tiempo real en la infraestructura gestionada de Amazon Web Services.
+   Haz un pedido desde el TPV o desde la app móvil. Refresca la tabla `pedidos` en DbGate: el registro aparece guardado en tiempo real en la infraestructura gestionada de Amazon Web Services.
 
 ---
 

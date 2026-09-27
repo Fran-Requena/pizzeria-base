@@ -358,35 +358,15 @@ Sin embargo, cuando DbGate tiene conexiones inyectadas por variables de entorno 
 La solución limpia y definitiva es **simplificar `docker-compose.db.yml`** (dejando DbGate libre de variables estáticas) e **inyectar la conexión con `useSsl: true`** en su archivo de configuración interno:
 
 #### Paso 1: Limpiar `docker-compose.db.yml` en tu EC2
-Abre el archivo:
+Ejecuta este comando directo en la terminal para retirar las variables que forzaban la conexión al contenedor local:
 ```bash
-nano ~/pizzeria-base/docker-compose.db.yml
+sed -i '/- CONNECTIONS=pizzeria/,/- ENGINE_pizzeria=/d' docker-compose.db.yml
 ```
-Deja la sección `dbgate` limpia, sin la lista de variables de conexión y con `depends_on` comentado:
-```yaml
-  # 2. Gestor Visual Web de Base de Datos (DbGate)
-  dbgate:
-    image: dbgate/dbgate:latest
-    container_name: pizzeria-prod-dbgate
-    restart: unless-stopped
-    environment:
-      - WEB_ROOT=/dbgate
-      - SKIP_ALL_AUTH=true
-    volumes:
-      - pizzeria_prod_dbgate:/root/.dbgate
-    expose:
-      - "3000"
-#   depends_on:
-#     db:
-#       condition: service_healthy
-    networks:
-      - pizzeria-network
-```
-*(Guarda con `Ctrl + O`, `Enter` y sal con `Ctrl + X`).*
+*(O si prefieres editarlo con `nano ~/pizzeria-base/docker-compose.db.yml`, deja la sección `dbgate` limpia únicamente con `WEB_ROOT=/dbgate` y `SKIP_ALL_AUTH=true`).*
 
 #### Paso 2: Recrear el contenedor de DbGate
 ```bash
-docker compose -f docker-compose.db.yml up -d dbgate
+docker compose -f docker-compose.db.yml up -d --force-recreate dbgate
 ```
 
 #### Paso 3: Inyectar la conexión con SSL a AWS RDS
@@ -408,10 +388,15 @@ Reinicia el contenedor para cargar la configuración:
 docker compose -f docker-compose.db.yml restart dbgate
 ```
 
+Comprueba en la terminal que se ha guardado correctamente:
+```bash
+docker exec pizzeria-prod-dbgate cat /root/.dbgate/connections.jsonl
+```
+
 #### Paso 4: Verificación
 1. Abre o refresca en tu navegador: **`https://daw-XX.guillermofoix.org/dbgate/`**.
-2. Verás en el menú izquierdo la conexión **AWS RDS Bella Napoli** conectada con SSL activo.
-3. Despliega sus tablas: ¡podrás ver `pedidos`, `pizzas`, `ingredientes` y realizar consultas SQL directamente en la nube de AWS! Además, el botón para crear y editar conexiones en la interfaz web vuelve a estar 100% operativo.
+2. En el panel izquierdo de **Conexiones**, haz doble clic sobre: 👉 **`AWS RDS Bella Napoli`**.
+3. Se conectará mediante SSL a Amazon RDS y desplegará la carpeta **Tablas**: verás `pedidos`, `pizzas`, `ingredientes`, `mesas` y podrás realizar consultas SQL directamente en la nube de AWS. Además, el botón `+` para crear nuevas conexiones vuelve a estar 100% operativo.
 
 ---
 
