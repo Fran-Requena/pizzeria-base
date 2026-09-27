@@ -111,16 +111,22 @@ graph TB
    * **Gestión de credenciales:** Autogestionada (*Self managed*).
    * **Contraseña maestra:** `pizzeria_pass_2026!`
    * **Configuración de la instancia:** `db.t4g.micro` (o `db.t3.micro`).
-   * **Almacenamiento:** Asignación de 20 GiB gp3 (desmarca *Habilitar escalado automático*).
+   * **Almacenamiento:**
+     * **Tipo de almacenamiento:** SSD de uso general (`gp2` o `gp3`).
+     * **Almacenamiento asignado:** `20` GiB.
+     * **Desplegable `▼ Configuración de almacenamiento adicional`:**  
+       Haz clic sobre él para expandirlo y **DESMARCA** la casilla **«Habilitar escalado automático de almacenamiento»** (*Enable storage autoscaling*).  
+       *(¡Importante! AWS la marca por defecto con un umbral de 1000 GiB; desmarcarla garantiza que el disco no aumente de tamaño y protege los créditos del laboratorio).*
    * **Conectividad:**
-     * **VPC:** Mantener la VPC por defecto.
-     * **Acceso público:** **No** (Imprescindible para seguridad).
-     * **Grupo de seguridad de VPC:** Elige **`pizzeria-rds-secgroup`** (elimina el `default` si aparece).
-   * **Configuración adicional (Despliega la pestaña inferior):**
-     * **Nombre de la base de datos inicial:** `pizzeria_db` (¡Crítico! Si se deja vacío, no creará la BBDD).
-     * Desmarca *Habilitar copias de seguridad automáticas* (si estás en AWS Academy para ahorrar créditos).
-4. Pulsa **Crear base de datos**.
-5. Espera 4-5 minutos hasta que el estado cambie a **Disponible** y **copia el Endpoint** generado:  
+     * **Recurso de computación:** `No se conecte a un recurso informático de EC2` (lo enlazamos mediante grupos de seguridad).
+     * **Nube privada virtual (VPC):** Mantener la VPC por defecto (`default`).
+     * **Acceso público:** **No** (Imprescindible para seguridad: la base de datos queda aislada dentro de la VPC privada).
+     * **Grupo de seguridad de VPC:** Selecciona **`pizzeria-rds-secgroup`** (si aparece el grupo `default`, quítalo para que solo quede este).
+   * **Configuración adicional (Despliega la sección `▼ Configuración adicional` al final de la página):**
+     * **Nombre de la base de datos inicial:** `pizzeria_db` (¡Crítico! Si se deja vacío, PostgreSQL no creará la BBDD inicial y la aplicación fallará).
+     * **Copias de seguridad:** Desmarca *Habilitar copias de seguridad automáticas* (ahorro de créditos de laboratorio).
+4. Pulsa el botón final naranja **Crear base de datos**.
+5. Espera 4-5 minutos hasta que el estado cambie a **Disponible** y **copia el Punto de enlace (Endpoint)** generado:  
    *(Ejemplo: `pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com`).*
 
 ---
