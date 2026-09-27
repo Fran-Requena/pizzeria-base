@@ -126,8 +126,14 @@ graph TB
      * **Nombre de la base de datos inicial:** `pizzeria_db` (¡Crítico! Si se deja vacío, PostgreSQL no creará la BBDD inicial y la aplicación fallará).
      * **Copias de seguridad:** Desmarca *Habilitar copias de seguridad automáticas* (ahorro de créditos de laboratorio).
 4. Pulsa el botón final naranja **Crear base de datos**.
-5. Espera 4-5 minutos hasta que el estado cambie a **Disponible** y **copia el Punto de enlace (Endpoint)** generado:  
-   *(Ejemplo: `pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com`).*
+5. **Localizar y copiar el Punto de enlace (*Endpoint*):**
+   * Espera 4-5 minutos hasta que el estado de la base de datos cambie de *Creando* a **Disponible** (*Available*).
+   * Haz clic sobre el enlace azul del nombre: 👉 **`pizzeria-db`** para entrar en su panel de detalles.
+   * En la pestaña **Conectividad y seguridad** (*Connectivity & security*), observa el apartado superior *"Conectarse mediante"*.
+   * Si por defecto viene marcada la tarjeta *Fragmentos de código*, haz clic en la tercera tarjeta: 👉 **`Puntos de conexión`** (*"Úselo cuando se conecte a través de cualquier interfaz IDE"*).
+   * Justo debajo, en la sección **Punto de enlace y puerto**, localiza el campo **Punto de enlace** (*Endpoint*) y haz clic en el icono de copiar. Tendrá un formato similar a:  
+     `pizzeria-db.crfj6um8vnsv.us-east-1.rds.amazonaws.com`
+   * Guarda este valor; lo utilizaremos a continuación en el archivo `.env` de la EC2 (`DB_HOST`) y en la configuración de DbGate.
 
 ---
 
@@ -170,7 +176,7 @@ Para conectar tu máquina a Internet sin exponer IPs públicas ni abrir puertos 
 
 3. Modifica los siguientes parámetros:
    * **`CLOUDFLARE_TUNNEL_TOKEN=`** $\rightarrow$ Pega tu token de Cloudflare.
-   * **`DB_HOST=db`** $\rightarrow$ Sustitúyelo por tu **Endpoint de AWS RDS**:
+   * **`DB_HOST=db`** $\rightarrow$ Sustituye `db` por el **Punto de enlace (*Endpoint*) de AWS RDS** que copiaste en el paso 1.4:
      ```ini
      DB_HOST=pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com
      DB_PORT=5432
@@ -178,7 +184,9 @@ Para conectar tu máquina a Internet sin exponer IPs públicas ni abrir puertos 
      DB_USER=pizzeria_user
      DB_PASSWORD=pizzeria_pass_2026!
      ```
-   *(Guarda con `Ctrl + O`, `Enter` y sal con `Ctrl + X`).*
+     > [!TIP]
+     > **Recordatorio:** Este valor proviene de la consola de RDS $\rightarrow$ *pizzeria-db* $\rightarrow$ pestaña *Conectividad y seguridad* $\rightarrow$ tarjeta **`Puntos de conexión`** $\rightarrow$ campo **Punto de enlace**.
+   *(Guarda en nano con `Ctrl + O`, `Enter` y sal con `Ctrl + X`).*
 
 ---
 
