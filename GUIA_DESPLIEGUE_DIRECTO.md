@@ -86,7 +86,9 @@ graph TB
 ### 1.3 Lanzar la Instancia EC2
 1. Ve a **EC2** $\rightarrow$ **Instancias** $\rightarrow$ **Lanzar instancias**:
    * **Nombre:** `Pizzeria-Produccion`
-   * **AMI:** **Ubuntu Server 24.04 LTS** (64-bit x86).
+   * **AMI:** Selecciona **Ubuntu** (**Ubuntu Server 24.04 LTS**, 64-bit x86).  
+     > [!TIP]
+     > **Aviso de cambio de AMI:** Al cambiar de la opción por defecto (Amazon Linux) a Ubuntu, AWS mostrará una ventana emergente advirtiendo: *"Al cambiar la AMI, se restablecerán algunos ajustes configurados anteriormente a sus valores predeterminados..."*. Es un aviso normal de AWS: haz clic en **Confirmar / Continuar** con total tranquilidad.
    * **Tipo de instancia:** **`t3.small`** (2 vCPU, 2 GiB RAM).
    * **Par de claves:** `vockey` (o tu clave de AWS Academy).
    * **Configuración de red:** Pulsa *Editar* $\rightarrow$ *Seleccionar grupo de seguridad existente* $\rightarrow$ Selecciona **`pizzeria-secgroup`**.
@@ -96,9 +98,12 @@ graph TB
 ---
 
 ### 1.4 Crear la Base de Datos Gestionada en Amazon RDS
-1. En el buscador de AWS escribe **RDS** y accede al servicio.
-2. Pulsa en **Crear base de datos** y configura:
-   * **Método de creación:** Creación estándar (*Standard create*).
+1. En el buscador de AWS escribe **RDS** y accede a la sección **Bases de datos**.
+2. Pulsa en el botón naranja **Crear base de datos** y selecciona **Configuración completa** (*Standard create*).  
+   > [!WARNING]
+   > **Evita "Configuración exprés" (*Easy create*):** Despliega el menú del botón naranja y asegúrate de elegir **Configuración completa**. La opción exprés intentará aprovisionar Aurora Serverless, no cubierto por la capa gratuita, y consumirá créditos rápidamente.
+3. Configura los siguientes parámetros en el asistente:
+   * **Método de creación:** **Configuración completa** (*Standard create*).
    * **Tipo de motor:** **PostgreSQL** (versión `PostgreSQL 16.X`).
    * **Plantillas:** **Capa gratuita** (*Free tier*).
    * **Identificador de instancia de base de datos:** `pizzeria-db`
@@ -114,8 +119,8 @@ graph TB
    * **Configuración adicional (Despliega la pestaña inferior):**
      * **Nombre de la base de datos inicial:** `pizzeria_db` (¡Crítico! Si se deja vacío, no creará la BBDD).
      * Desmarca *Habilitar copias de seguridad automáticas* (si estás en AWS Academy para ahorrar créditos).
-3. Pulsa **Crear base de datos**.
-4. Espera 4-5 minutos hasta que el estado cambie a **Disponible** y **copia el Endpoint** generado:  
+4. Pulsa **Crear base de datos**.
+5. Espera 4-5 minutos hasta que el estado cambie a **Disponible** y **copia el Endpoint** generado:  
    *(Ejemplo: `pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com`).*
 
 ---

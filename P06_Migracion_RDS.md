@@ -86,11 +86,10 @@ Nuestra máquina **EC2 actuará como "Bastión"**: como está dentro de la misma
 ### 1. Iniciar el Asistente de Creación en AWS
 1. Inicia sesión en la consola de **AWS Academy**.
 2. En la barra superior de búsqueda, escribe **RDS** y entra en el servicio.
-3. En la pantalla inicial de bienvenida de *Aurora and RDS*:
-   > [!WARNING]
-   > **Cuidado con la pantalla de bienvenida:** Verás dos tarjetas:
-   > * **Izquierda ("Cree con la configuración exprés"):** ❌ **NO pulses el botón naranja con el cohete**. Crea Aurora Serverless que no entra en la capa gratuita y agota créditos rápidamente.
-   > * **Derecha ("Crear con configuración completa"):** ✅ **Haz clic en el botón blanco con borde azul `Crear`** (o entra en el menú izquierdo en *Bases de datos* $\rightarrow$ *Crear base de datos*).
+3. Accede al apartado **Bases de datos** en el menú izquierdo y pulsa en el botón naranja **Crear base de datos**:
+   * En el menú desplegable del botón, selecciona: 👉 **Configuración completa** (*Standard create*).
+   * ⚠️ **Atención:** Si pulsas directamente o seleccionas *Configuración exprés* (con el icono del cohete 🚀), AWS intentará crear un clúster Aurora Serverless no cubierto por la capa gratuita que consumirá créditos de la cuenta de AWS Academy.
+   *(Si AWS te muestra una pantalla de bienvenida con dos tarjetas grandes, elige igualmente la tarjeta derecha **Crear con configuración completa**).*
 
 ---
 
