@@ -199,15 +199,16 @@ docker network create pizzeria-network
 ---
 
 ### 3.4 Inyectar la Configuración de DbGate con Cifrado SSL
-Amazon RDS exige conexiones cifradas con TLS/SSL. Dado que DbGate gestiona el SSL mediante su archivo de configuración interno, inyectamos la conexión en su volumen persistente:
+Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor local `db`. Para que DbGate cargue nuestra conexión a AWS RDS y no busque una base de datos local inexistente:
 
-1. Crea el volumen persistente de DbGate:
+1. Limpia las variables estáticas locales de `docker-compose.db.yml`:
    ```bash
-   docker volume create pizzeria_prod_dbgate
+   sed -i '/- CONNECTIONS=pizzeria/,/- ENGINE_pizzeria=/d' docker-compose.db.yml
    ```
 
-2. Arranca el contenedor de DbGate:
+2. Crea el volumen persistente y arranca el contenedor de DbGate:
    ```bash
+   docker volume create pizzeria_prod_dbgate
    docker compose -f docker-compose.db.yml up -d dbgate
    ```
 
