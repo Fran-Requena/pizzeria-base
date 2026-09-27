@@ -393,8 +393,15 @@ docker compose -f docker-compose.db.yml up -d dbgate
 Ejecuta este comando directo en la terminal de tu EC2 para guardar la conexión con el cifrado SSL (`"useSsl": true`) activado:
 
 ```bash
-docker exec -i pizzeria-prod-dbgate sh -c 'echo "{\"_id\":\"pizzeria_rds\",\"engine\":\"postgres@dbgate-plugin-postgres\",\"server\":\"pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com\",\"port\":5432,\"user\":\"pizzeria_user\",\"password\":\"pizzeria_pass_2026!\",\"defaultDatabase\":\"pizzeria_db\",\"displayName\":\"AWS RDS Bella Napoli\",\"useSsl\":true}" > /root/.dbgate/connections.jsonl'
+docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' << 'EOF'
+{"_id":"pizzeria_rds","engine":"postgres@dbgate-plugin-postgres","server":"pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com","port":5432,"user":"pizzeria_user","password":"pizzeria_pass_2026!","defaultDatabase":"pizzeria_db","displayName":"AWS RDS Bella Napoli","useSsl":true}
+EOF
 ```
+
+> [!IMPORTANT]
+> * Sustituye el valor de `server` por tu **Punto de enlace real** copiado de RDS.
+> * **Sin barra final:** El endpoint termina siempre en `.com` (ejemplo: `...rds.amazonaws.com`), **NUNCA añadas un slash `/` al final**.
+> *(Si usas la versión en una línea con `echo`, el símbolo `\"` que ves es una barra invertida de escape para las comillas en bash, no una barra que deba llevar el endpoint).*
 
 Reinicia el contenedor para cargar la configuración:
 ```bash

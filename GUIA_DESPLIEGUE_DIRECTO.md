@@ -213,9 +213,14 @@ Amazon RDS exige conexiones cifradas con TLS/SSL. Dado que DbGate gestiona el SS
 
 3. Inyecta la conexión a RDS con `"useSsl": true`:
    ```bash
-   docker exec -i pizzeria-prod-dbgate sh -c 'echo "{\"_id\":\"pizzeria_rds\",\"engine\":\"postgres@dbgate-plugin-postgres\",\"server\":\"pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com\",\"port\":5432,\"user\":\"pizzeria_user\",\"password\":\"pizzeria_pass_2026!\",\"defaultDatabase\":\"pizzeria_db\",\"displayName\":\"AWS RDS Bella Napoli\",\"useSsl\":true}" > /root/.dbgate/connections.jsonl'
+   docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' << 'EOF'
+   {"_id":"pizzeria_rds","engine":"postgres@dbgate-plugin-postgres","server":"pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com","port":5432,"user":"pizzeria_user","password":"pizzeria_pass_2026!","defaultDatabase":"pizzeria_db","displayName":"AWS RDS Bella Napoli","useSsl":true}
+   EOF
    ```
-   *(Sustituye el valor de server por tu endpoint real de RDS).*
+   > [!IMPORTANT]
+   > * Sustituye el valor de `server` por tu **Punto de enlace (*Endpoint*) real** de AWS RDS.
+   > * **Sin barra final:** El endpoint debe terminar estrictamente en `.com` (ejemplo: `...rds.amazonaws.com`), **NUNCA añadas un slash `/` al final**.
+   > *(Si utilizas el comando tradicional en una sola línea con `echo`, el símbolo `\"` que ves es únicamente una barra invertida de escape para las comillas del JSON en Linux, no forma parte del endpoint).*
 
 4. Reinicia DbGate para aplicar la configuración:
    ```bash
