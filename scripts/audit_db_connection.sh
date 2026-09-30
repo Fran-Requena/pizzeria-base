@@ -211,13 +211,14 @@ else
     if [ "$BACKEND_STATUS" = "running" ]; then
         log_ok "Contenedor 'pizzeria-prod-backend' en ejecución (Up)."
         
-        # Comprobar qué DB_HOST tiene cargado en su memoria
+        # Comprobar qué DB_HOST y DB_NAME tiene cargado en su memoria
         RUNNING_DB_HOST=$(docker inspect pizzeria-prod-backend --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^DB_HOST=' | cut -d '=' -f2-)
+        RUNNING_DB_NAME=$(docker inspect pizzeria-prod-backend --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^DB_NAME=' | cut -d '=' -f2-)
         
-        if [ "$RUNNING_DB_HOST" = "$DB_HOST" ]; then
-            log_ok "El contenedor backend tiene sincronizado el DB_HOST correcto en memoria."
+        if [ "$RUNNING_DB_HOST" = "$DB_HOST" ] && [ "$RUNNING_DB_NAME" = "$DB_NAME" ]; then
+            log_ok "El contenedor backend tiene sincronizadas las variables (DB_HOST y DB_NAME) en memoria."
         else
-            log_error "Desfase detectado: El contenedor backend tiene cargado DB_HOST='$RUNNING_DB_HOST', pero en .env tienes '$DB_HOST'."
+            log_error "Desfase detectado: El contenedor backend corre con DB_HOST='$RUNNING_DB_HOST' y DB_NAME='$RUNNING_DB_NAME', pero en .env tienes DB_HOST='$DB_HOST' y DB_NAME='$DB_NAME'."
             print_solution_box "Recrear contenedor Backend" \
                 "Has editado el archivo .env pero no has recompilado/reiniciado el contenedor." \
                 "Ejecuta en tu terminal:" \
@@ -309,6 +310,26 @@ if echo "$HEALTH_RESPONSE" | grep -qi '"connected"[[:space:]]*:[[:space:]]*true'
     log_ok "Endpoint /api/health respondió exitosamente: ${CLR_GREEN}Base de datos CONECTADA${CLR_RESET} (Estado: UP)."
     DB_TIME=$(echo "$HEALTH_RESPONSE" | grep -o '"db_time"[^,}]*' | cut -d ':' -f2- | tr -d '"')
     [ -n "$DB_TIME" ] && log_ok "Marca de tiempo de AWS RDS: ${CLR_CYAN}$DB_TIME${CLR_RESET}"
+
+    # Verificación del catálogo de datos real (/api/pizzas)
+    PIZZAS_RESPONSE=$(curl -s --max-time 5 http://localhost/api/pizzas 2>/dev/null || echo "")
+    if echo "$PIZZAS_RESPONSE" | grep -qi 'relation.*pizzas.*does not exist'; then
+        log_error "La base de datos conecta, pero NO contiene las tablas ('relation \"pizzas\" does not exist')."
+        print_solution_box "Inicializar Tablas en AWS RDS" \
+            "La base de datos está vacía y aún no tiene creado el esquema de tablas." \
+            "1. Reinicia el backend para que ejecute la auto-creación:" \
+            "   docker compose -f docker-compose.app.yml restart backend" \
+            "2. O si estás en la P06, restaura la copia de seguridad:" \
+            "   docker exec -e PGPASSWORD='$DB_PASSWORD' -i pizzeria-prod-db psql -h '$CLEAN_DB_HOST' -U '$DB_USER' -d '$DB_NAME' < backup.sql"
+    elif echo "$PIZZAS_RESPONSE" | grep -qi '"success"[[:space:]]*:[[:space:]]*true'; then
+        PIZZA_COUNT=$(echo "$PIZZAS_RESPONSE" | grep -o '"count"[^,}]*' | cut -d ':' -f2- | tr -d ' ')
+        PIZZA_COUNT=${PIZZA_COUNT:-0}
+        if [ "$PIZZA_COUNT" -gt 0 ]; then
+            log_ok "Catálogo de datos validado en AWS RDS: ${CLR_CYAN}$PIZZA_COUNT pizzas activas${CLR_RESET} en la carta."
+        else
+            log_warn "La tabla 'pizzas' existe pero está vacía (0 pizzas en la carta)."
+        fi
+    fi
 else
     log_error "El endpoint /api/health no devuelve conexión positiva con la base de datos."
     
