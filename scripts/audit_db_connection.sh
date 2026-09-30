@@ -100,7 +100,7 @@ fi
 log_ok "Archivo .env localizado en: $ENV_PATH"
 
 # Extracción y sanitización de variables (eliminando \r de Windows, espacios y comillas)
-DB_HOST=$(grep '^DB_HOST=' "$ENV_PATH" | cut -d '=' -f2- | tr -d '\r"' | tr -d "'" | xargs)
+RAW_DB_HOST=$(grep '^DB_HOST=' "$ENV_PATH" | cut -d '=' -f2- | tr -d '\r"' | tr -d "'" | xargs)
 DB_PORT=$(grep '^DB_PORT=' "$ENV_PATH" | cut -d '=' -f2- | tr -d '\r"' | tr -d "'" | xargs)
 DB_NAME=$(grep '^DB_NAME=' "$ENV_PATH" | cut -d '=' -f2- | tr -d '\r"' | tr -d "'" | xargs)
 DB_USER=$(grep '^DB_USER=' "$ENV_PATH" | cut -d '=' -f2- | tr -d '\r"' | tr -d "'" | xargs)
@@ -111,7 +111,12 @@ DB_PORT=${DB_PORT:-5432}
 DB_NAME=${DB_NAME:-pizzeria_db}
 DB_USER=${DB_USER:-pizzeria_user}
 
+# Endpoint limpio sin barra final
+CLEAN_DB_HOST="${RAW_DB_HOST%/}"
+DB_HOST="$RAW_DB_HOST"
+
 # Validaciones de DB_HOST
+HAS_SLASH_ERROR=false
 if [ -z "$DB_HOST" ]; then
     log_error "La variable DB_HOST está vacía en el archivo .env."
     print_solution_box "Definir DB_HOST" \
@@ -124,10 +129,16 @@ elif [ "$DB_HOST" = "db" ] || [ "$DB_HOST" = "localhost" ] || [ "$DB_HOST" = "12
         "2. Copia el 'Punto de enlace' (Endpoint)." \
         "3. Edita .env con 'nano .env' y sustituye DB_HOST=db por tu endpoint."
 elif [[ "$DB_HOST" == *"/"* ]]; then
-    log_error "El endpoint contiene una barra '/' al final ($DB_HOST)."
-    print_solution_box "Corregir formato de Endpoint" \
+    HAS_SLASH_ERROR=true
+    log_error "El endpoint en .env contiene una barra '/' al final: ${CLR_RED}$DB_HOST${CLR_RESET}"
+    print_solution_box "Corregir formato de Endpoint (Barra final detectada)" \
         "Los nombres de host DNS nunca llevan barra final ni protocolo http/https." \
-        "Abre el archivo .env con 'nano .env' y borra la '/' del final de DB_HOST."
+        "1. Abre el archivo .env con: nano .env" \
+        "2. Deja DB_HOST terminado limpiamente en .com sin barra final:" \
+        "   DB_HOST=$CLEAN_DB_HOST" \
+        "3. Guarda con Ctrl+O y sal con Ctrl+X." \
+        "4. ¡IMPORTANTE! Recompila el backend para aplicar el cambio:" \
+        "   docker compose -f docker-compose.app.yml up -d --build backend"
 else
     log_ok "DB_HOST configurado correctamente: ${CLR_CYAN}$DB_HOST${CLR_RESET}"
     log_ok "Base de datos destino: ${CLR_CYAN}$DB_NAME${CLR_RESET} | Usuario: ${CLR_CYAN}$DB_USER${CLR_RESET} | Puerto: ${CLR_CYAN}$DB_PORT${CLR_RESET}"
@@ -148,10 +159,14 @@ if getent hosts "$DB_HOST" >/dev/null 2>&1; then
     DNS_RESOLVED=true
 else
     log_error "Fallo de resolución DNS para el host: '$DB_HOST'."
-    print_solution_box "Endpoint Incorrecto o Instancia Inexistente" \
-        "1. Comprueba si has copiado el endpoint completo sin faltar letras ni añadir espacios." \
-        "2. Verifica en la consola de AWS RDS que la base de datos realmente existe y no fue eliminada." \
-        "3. Asegúrate de estar en la región correcta de AWS (ej. N. Virginia us-east-1)."
+    if [ "$HAS_SLASH_ERROR" = true ]; then
+        echo -e "     ${CLR_YELLOW}Causa identificada:${CLR_RESET} El fallo de DNS se debe a la barra final '/' en DB_HOST."
+    else
+        print_solution_box "Endpoint Incorrecto o Instancia Inexistente" \
+            "1. Comprueba si has copiado el endpoint completo sin faltar letras ni añadir espacios." \
+            "2. Verifica en la consola de AWS RDS que la base de datos realmente existe y no fue eliminada." \
+            "3. Asegúrate de estar en la región correcta de AWS (ej. N. Virginia us-east-1)."
+    fi
 fi
 
 # Prueba 2.2: Conectividad TCP al puerto 5432 (Socket nativo Bash con timeout 5s)
@@ -264,8 +279,8 @@ else
     elif ! echo "$DBGATE_JSONL" | grep -qi '"useSsl"[[:space:]]*:[[:space:]]*true'; then
         log_error "DbGate no tiene habilitado el cifrado obligatorio SSL ('\"useSsl\":true')."
         NEED_DBGATE_FIX=true
-    elif ! echo "$DBGATE_JSONL" | grep -Fq "$DB_HOST"; then
-        log_error "DbGate no tiene configurado el endpoint actual de RDS ($DB_HOST)."
+    elif ! echo "$DBGATE_JSONL" | grep -Fq "$CLEAN_DB_HOST"; then
+        log_error "DbGate no tiene configurado el endpoint actual de RDS ($CLEAN_DB_HOST)."
         NEED_DBGATE_FIX=true
     else
         log_ok "Conexión en DbGate configurada con endpoint de AWS RDS y SSL activado ('useSsl: true')."
@@ -274,12 +289,9 @@ else
 
     if [ "$NEED_DBGATE_FIX" = true ]; then
         print_solution_box "Inyectar Conexión SSL en DbGate" \
-            "Ejecuta este bloque completo en tu terminal para inyectar la configuración correcta:" \
+            "Copia y pega este comando directo de una sola línea (sin problemas de EOF):" \
             "" \
-            "docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' << 'EOF'" \
-            "{\"_id\":\"pizzeria_rds\",\"engine\":\"postgres@dbgate-plugin-postgres\",\"server\":\"$DB_HOST\",\"port\":$DB_PORT,\"user\":\"$DB_USER\",\"password\":\"$DB_PASSWORD\",\"defaultDatabase\":\"$DB_NAME\",\"displayName\":\"AWS RDS Bella Napoli\",\"useSsl\":true}" \
-            "EOF" \
-            "docker compose -f docker-compose.db.yml restart dbgate"
+            "echo '{\"_id\":\"pizzeria_rds\",\"engine\":\"postgres@dbgate-plugin-postgres\",\"server\":\"$CLEAN_DB_HOST\",\"port\":$DB_PORT,\"user\":\"$DB_USER\",\"password\":\"$DB_PASSWORD\",\"defaultDatabase\":\"$DB_NAME\",\"displayName\":\"AWS RDS Bella Napoli\",\"useSsl\":true}' | docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' && docker compose -f docker-compose.db.yml restart dbgate"
     fi
 fi
 
@@ -341,6 +353,15 @@ else
             "Esto confirma el fallo detectado en el [PASO 2]:" \
             "1. Ve a AWS EC2 -> Grupos de seguridad -> Grupo de tu RDS." \
             "2. Añade en 'Reglas de entrada' el acceso PostgreSQL 5432 desde el Grupo de la EC2."
+    elif echo "$COMBINED_DIAG" | grep -qi 'ENOTFOUND\|getaddrinfo'; then
+        log_error "¡ERROR DETECTADO EN LOGS! Fallo de resolución DNS (ENOTFOUND)."
+        print_solution_box "Endpoint Incorrecto o con Barra Final" \
+            "El backend no puede resolver la dirección de AWS RDS." \
+            "1. Comprueba si en .env la variable DB_HOST tiene una barra '/' al final o espacios." \
+            "2. Abre .env con 'nano .env' y déjalo terminado en .com sin barra final:" \
+            "   DB_HOST=$CLEAN_DB_HOST" \
+            "3. ¡IMPORTANTE! Recompila el backend para aplicar el cambio:" \
+            "   docker compose -f docker-compose.app.yml up -d --build backend"
     else
         echo -e "  ${CLR_YELLOW}Últimas líneas del registro del backend:${CLR_RESET}"
         docker logs pizzeria-prod-backend --tail 10 2>&1 | sed 's/^/     /'
