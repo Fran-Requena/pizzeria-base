@@ -213,21 +213,14 @@ Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor loca
    docker compose -f docker-compose.db.yml up -d --force-recreate dbgate
    ```
 
-3. Inyecta la conexión a RDS con `"useSsl": true`:
+3. Inyecta la conexión a RDS con `"useSsl": true` y reinicia DbGate:
+   Ejecuta este comando directo de una sola línea (sustituyendo `<ENDPOINT_RDS>` por tu endpoint real):
    ```bash
-   docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' << 'EOF'
-   {"_id":"pizzeria_rds","engine":"postgres@dbgate-plugin-postgres","server":"pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com","port":5432,"user":"pizzeria_user","password":"pizzeria_pass_2026!","defaultDatabase":"pizzeria_db","displayName":"AWS RDS Bella Napoli","useSsl":true}
-   EOF
+   echo '{"_id":"pizzeria_rds","engine":"postgres@dbgate-plugin-postgres","server":"<ENDPOINT_RDS>","port":5432,"user":"pizzeria_user","password":"pizzeria_pass_2026!","defaultDatabase":"pizzeria_db","displayName":"AWS RDS Bella Napoli","useSsl":true}' | docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' && docker compose -f docker-compose.db.yml restart dbgate
    ```
    > [!IMPORTANT]
-   > * Sustituye el valor de `server` por tu **Punto de enlace (*Endpoint*) real** de AWS RDS copiado en el paso 1.4.
-   > * **Sin barra final:** El endpoint debe terminar estrictamente en `.com` (ejemplo: `...rds.amazonaws.com`), **NUNCA añadas un slash `/` al final**.
-   > *(Si utilizas el comando tradicional en una sola línea con `echo`, el símbolo `\"` que ves es únicamente una barra invertida de escape para las comillas del JSON en Linux, no forma parte del endpoint).*
-
-4. Reinicia DbGate para aplicar la configuración:
-   ```bash
-   docker compose -f docker-compose.db.yml restart dbgate
-   ```
+   > * Sustituye `<ENDPOINT_RDS>` por tu **Punto de enlace (*Endpoint*) real** copiado en el paso 1.4 (ejemplo: `pizzeria-db.xxxx.us-east-1.rds.amazonaws.com`).
+   > * **Sin barra final:** El endpoint debe terminar estrictamente en `.com`, **NUNCA añadas un slash `/` al final**.
 
 5. Comprueba que el archivo se ha guardado correctamente:
    ```bash

@@ -375,24 +375,16 @@ sed -i '/- CONNECTIONS=pizzeria/,/- ENGINE_pizzeria=/d' docker-compose.db.yml
 docker compose -f docker-compose.db.yml up -d --force-recreate dbgate
 ```
 
-#### Paso 3: Inyectar la conexión con SSL a AWS RDS
-Ejecuta este comando directo en la terminal de tu EC2 para guardar la conexión con el cifrado SSL (`"useSsl": true`) activado:
+#### Paso 3: Inyectar la conexión con SSL a AWS RDS y reiniciar DbGate
+Ejecuta este comando directo de una sola línea en la terminal de tu EC2 (sustituyendo `<ENDPOINT_RDS>` por tu endpoint real):
 
 ```bash
-docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' << 'EOF'
-{"_id":"pizzeria_rds","engine":"postgres@dbgate-plugin-postgres","server":"pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com","port":5432,"user":"pizzeria_user","password":"pizzeria_pass_2026!","defaultDatabase":"pizzeria_db","displayName":"AWS RDS Bella Napoli","useSsl":true}
-EOF
+echo '{"_id":"pizzeria_rds","engine":"postgres@dbgate-plugin-postgres","server":"<ENDPOINT_RDS>","port":5432,"user":"pizzeria_user","password":"pizzeria_pass_2026!","defaultDatabase":"pizzeria_db","displayName":"AWS RDS Bella Napoli","useSsl":true}' | docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' && docker compose -f docker-compose.db.yml restart dbgate
 ```
 
 > [!IMPORTANT]
-> * Sustituye el valor de `server` por tu **Punto de enlace real** copiado de RDS.
-> * **Sin barra final:** El endpoint termina siempre en `.com` (ejemplo: `...rds.amazonaws.com`), **NUNCA añadas un slash `/` al final**.
-> *(Si usas la versión en una línea con `echo`, el símbolo `\"` que ves es una barra invertida de escape para las comillas en bash, no una barra que deba llevar el endpoint).*
-
-Reinicia el contenedor para cargar la configuración:
-```bash
-docker compose -f docker-compose.db.yml restart dbgate
-```
+> * Sustituye `<ENDPOINT_RDS>` por tu **Punto de enlace real** copiado de RDS (ejemplo: `pizzeria-db.xxxx.us-east-1.rds.amazonaws.com`).
+> * **Sin barra final:** El endpoint termina siempre en `.com`, **NUNCA añadas un slash `/` al final**.
 
 Comprueba en la terminal que se ha guardado correctamente:
 ```bash
