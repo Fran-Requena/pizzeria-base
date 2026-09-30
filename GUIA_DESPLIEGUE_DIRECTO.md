@@ -274,13 +274,20 @@ docker compose -f docker-compose.app.yml up -d --build
 
 Comprueba que la infraestructura está 100% operativa:
 
-1. **Estado de los Contenedores:**
+1. **Auditoría Automatizada de Salud y Diagnóstico (Recomendado):**
+   Ejecuta el script de auditoría integral que valida de forma automatizada los 6 puntos críticos de la arquitectura (variables `.env`, resolución DNS, reglas de entrada de Security Groups, contenedores Docker en vivo, cifrado SSL en DbGate y test de la API):
+   ```bash
+   bash scripts/audit_db_connection.sh
+   ```
+   *(Si el script detecta algún fallo, te indicará en pantalla la causa exacta y el comando para solucionarlo al instante).*
+
+2. **Estado de los Contenedores:**
    ```bash
    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
    ```
    *(Deberás ver activos: `pizzeria-prod-backend`, `pizzeria-prod-web`, `pizzeria-prod-qr`, `pizzeria-prod-tunnel` y `pizzeria-prod-dbgate`).*
 
-2. **Diagnóstico de Salud de la API con conexión a RDS:**
+3. **Diagnóstico de Salud de la API con conexión a RDS:**
    ```bash
    curl -s http://localhost/api/health
    ```

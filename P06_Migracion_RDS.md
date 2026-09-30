@@ -316,8 +316,14 @@ docker ps --format "table {{.Names}}\t{{.Status}}"
 
 ---
 
-### 5. Verificación y Test de Salud de la API
-Comprueba que el backend está conectado con éxito a Amazon RDS mediante la ruta de diagnóstico:
+### 5. Verificación y Auditoría Automatizada de Salud
+Comprueba que el backend y toda la infraestructura están conectados con éxito a Amazon RDS ejecutando el script de auditoría:
+
+```bash
+bash scripts/audit_db_connection.sh
+```
+
+O si prefieres realizar la comprobación puntual mediante la ruta de diagnóstico HTTP:
 
 ```bash
 curl -s http://localhost/api/health
