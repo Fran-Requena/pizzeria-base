@@ -290,20 +290,31 @@ echo ""
 # ------------------------------------------------------------------------------
 echo -e "${CLR_BOLD}[PASO 5/6] Diagnóstico de Salud de la API (/api/health) y Base de Datos...${CLR_RESET}"
 
-HEALTH_RESPONSE=$(curl -s --max-time 4 http://localhost/api/health 2>/dev/null || echo "")
+# El pool de pg en backend tiene un timeout de 4000ms; damos 7s a curl para capturar la respuesta HTTP 500 con 'DEGRADED'
+HEALTH_RESPONSE=$(curl -s --max-time 7 http://localhost/api/health 2>/dev/null || echo "")
 
 if echo "$HEALTH_RESPONSE" | grep -qi '"connected"[[:space:]]*:[[:space:]]*true'; then
-    log_ok "Endpoint /api/health respondió exitosamente: ${CLR_GREEN}Base de datos CONECTADA${CLR_RESET}."
+    log_ok "Endpoint /api/health respondió exitosamente: ${CLR_GREEN}Base de datos CONECTADA${CLR_RESET} (Estado: UP)."
     DB_TIME=$(echo "$HEALTH_RESPONSE" | grep -o '"db_time"[^,}]*' | cut -d ':' -f2- | tr -d '"')
     [ -n "$DB_TIME" ] && log_ok "Marca de tiempo de AWS RDS: ${CLR_CYAN}$DB_TIME${CLR_RESET}"
 else
     log_error "El endpoint /api/health no devuelve conexión positiva con la base de datos."
-    [ -n "$HEALTH_RESPONSE" ] && echo -e "     ${CLR_YELLOW}Respuesta recibida:${CLR_RESET} $HEALTH_RESPONSE"
     
-    # Análisis forense de los logs recientes del backend
+    # Comprobar si el backend devolvió el estado formal de conexión degradada
+    if echo "$HEALTH_RESPONSE" | grep -qi '"status"[[:space:]]*:[[:space:]]*"DEGRADED"'; then
+        log_warn "Estado de la API: ${CLR_YELLOW}${CLR_BOLD}DEGRADADO (DEGRADED)${CLR_RESET}"
+        echo -e "     ${CLR_YELLOW}El servidor web Express está activo y responde, pero ha perdido la conexión con la base de datos.${CLR_RESET}"
+        ERROR_MSG=$(echo "$HEALTH_RESPONSE" | grep -o '"error"[^}]*' | cut -d ':' -f2- | tr -d '"')
+        [ -n "$ERROR_MSG" ] && echo -e "     ${CLR_RED}Detalle del fallo:${CLR_RESET} $ERROR_MSG"
+    elif [ -n "$HEALTH_RESPONSE" ]; then
+        echo -e "     ${CLR_YELLOW}Respuesta recibida:${CLR_RESET} $HEALTH_RESPONSE"
+    fi
+    
+    # Análisis forense de los logs recientes del backend y respuesta HTTP combinados
     BACKEND_LOGS=$(docker logs pizzeria-prod-backend --tail 50 2>&1 || echo "")
+    COMBINED_DIAG="$HEALTH_RESPONSE $BACKEND_LOGS"
     
-    if echo "$BACKEND_LOGS" | grep -qi 'database.*does not exist'; then
+    if echo "$COMBINED_DIAG" | grep -qi 'database.*does not exist'; then
         log_error "¡ERROR DETECTADO EN LOGS! La base de datos '$DB_NAME' NO existe en AWS RDS."
         print_solution_box "Crear la Base de Datos Faltante en AWS RDS" \
             "Al crear la instancia RDS en AWS olvidaste el campo 'Nombre de la base de datos inicial'." \
@@ -311,18 +322,25 @@ else
             "" \
             "docker run --rm -e PGPASSWORD='$DB_PASSWORD' postgres:16-alpine psql -h '$DB_HOST' -U '$DB_USER' -d postgres -c 'CREATE DATABASE $DB_NAME;'" \
             "docker compose -f docker-compose.app.yml restart backend"
-    elif echo "$BACKEND_LOGS" | grep -qi 'password authentication failed'; then
+    elif echo "$COMBINED_DIAG" | grep -qi 'password authentication failed'; then
         log_error "¡ERROR DETECTADO EN LOGS! Fallo de autenticación para el usuario '$DB_USER'."
         print_solution_box "Credenciales Incorrectas" \
             "El usuario maestro o la contraseña en .env no coinciden con los que configuraste en AWS RDS." \
             "1. Abre .env con 'nano .env'." \
             "2. Verifica DB_USER y DB_PASSWORD (asegúrate de que coincida con la que pusiste en AWS)." \
             "3. Reinicia el backend: docker compose -f docker-compose.app.yml restart backend"
-    elif echo "$BACKEND_LOGS" | grep -qi 'no pg_hba.conf entry.*no encryption'; then
+    elif echo "$COMBINED_DIAG" | grep -qi 'no pg_hba.conf entry.*no encryption'; then
         log_error "¡ERROR DETECTADO EN LOGS! AWS RDS exige conexión cifrada SSL."
         print_solution_box "Activar SSL en Backend" \
             "Asegúrate de que en .env tienes DB_HOST configurado con el endpoint de RDS" \
             "y recompila el backend: docker compose -f docker-compose.app.yml up -d --build backend"
+    elif echo "$COMBINED_DIAG" | grep -qi 'Connection terminated due to connection timeout\|connect ETIMEDOUT'; then
+        log_error "¡ERROR DETECTADO EN LOGS! Timeout de conexión contra el puerto $DB_PORT de AWS RDS."
+        print_solution_box "Bloqueo de Red (Security Groups)" \
+            "El backend intentó conectar con AWS RDS pero los paquetes fueron descartados (DROP)." \
+            "Esto confirma el fallo detectado en el [PASO 2]:" \
+            "1. Ve a AWS EC2 -> Grupos de seguridad -> Grupo de tu RDS." \
+            "2. Añade en 'Reglas de entrada' el acceso PostgreSQL 5432 desde el Grupo de la EC2."
     else
         echo -e "  ${CLR_YELLOW}Últimas líneas del registro del backend:${CLR_RESET}"
         docker logs pizzeria-prod-backend --tail 10 2>&1 | sed 's/^/     /'
