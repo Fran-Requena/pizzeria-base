@@ -19,6 +19,8 @@ export const getAllPedidos = async (req, res) => {
         p.cliente_telefono,
         p.cliente_direccion,
         p.metodo_pago,
+        p.estado_pago,
+        p.stripe_session_id,
         p.observaciones,
         COALESCE(
           json_agg(
@@ -109,6 +111,8 @@ export const getPedidoById = async (req, res) => {
         p.cliente_telefono,
         p.cliente_direccion,
         p.metodo_pago,
+        p.estado_pago,
+        p.stripe_session_id,
         p.observaciones,
         COALESCE(
           json_agg(

@@ -704,17 +704,26 @@
 
           <div>
             <label class="block text-xs font-semibold text-slate-500 mb-1">Forma de Pago:</label>
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-3 gap-2">
               <label class="cursor-pointer">
                 <input type="radio" name="payment-method" value="efectivo_entrega" checked class="peer sr-only">
-                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-center peer-checked:border-brand-500 peer-checked:bg-brand-500/10 peer-checked:text-brand-500 transition-all">
-                  💵 Efectivo
+                <div class="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-center peer-checked:border-brand-500 peer-checked:bg-brand-500/10 peer-checked:text-brand-500 transition-all flex flex-col items-center justify-center">
+                  <span>💵 Efectivo</span>
+                  <span class="text-[9px] font-normal text-slate-400">Al recibir</span>
                 </div>
               </label>
               <label class="cursor-pointer">
                 <input type="radio" name="payment-method" value="tarjeta_entrega" class="peer sr-only">
-                <div class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-center peer-checked:border-brand-500 peer-checked:bg-brand-500/10 peer-checked:text-brand-500 transition-all">
-                  💳 Datáfono
+                <div class="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-center peer-checked:border-brand-500 peer-checked:bg-brand-500/10 peer-checked:text-brand-500 transition-all flex flex-col items-center justify-center">
+                  <span>💳 Datáfono</span>
+                  <span class="text-[9px] font-normal text-slate-400">En entrega</span>
+                </div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="payment-method" value="stripe" class="peer sr-only">
+                <div class="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-center peer-checked:border-indigo-500 peer-checked:bg-indigo-500/10 peer-checked:text-indigo-500 transition-all flex flex-col items-center justify-center">
+                  <span>💳 Stripe</span>
+                  <span class="text-[9px] font-normal text-slate-400">Online</span>
                 </div>
               </label>
             </div>

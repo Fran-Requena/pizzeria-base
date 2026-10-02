@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS pedidos (
     cliente_telefono VARCHAR(30),
     cliente_direccion TEXT,
     metodo_pago VARCHAR(30) DEFAULT 'efectivo_entrega',
+    estado_pago VARCHAR(20) DEFAULT 'pendiente',
+    stripe_session_id VARCHAR(120),
     observaciones TEXT
 );
 

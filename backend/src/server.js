@@ -7,6 +7,7 @@ import { testConnection, query } from './config/db.js';
 import pizzasRoutes from './routes/pizzasRoutes.js';
 import pedidosRoutes from './routes/pedidosRoutes.js';
 import mesasRoutes from './routes/mesasRoutes.js';
+import pagosRoutes from './routes/pagosRoutes.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -21,7 +22,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use(express.json());
+// Permitir capturar el buffer crudo (rawBody) de forma segura para validar la firma de Stripe
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(morgan('dev'));
 
 // ─── Ruta de Salud y Diagnóstico (Healthcheck) ─────────────────────────────
@@ -54,6 +60,7 @@ app.get('/api/health', async (req, res) => {
 app.use('/api/pizzas', pizzasRoutes);
 app.use('/api/pedidos', pedidosRoutes);
 app.use('/api/mesas', mesasRoutes);
+app.use('/api/pagos', pagosRoutes);
 
 // Ruta base con información didáctica
 app.get('/', (req, res) => {
@@ -63,7 +70,8 @@ app.get('/', (req, res) => {
       health: '/api/health',
       pizzas: '/api/pizzas',
       pedidos: '/api/pedidos',
-      mesas: '/api/mesas'
+      mesas: '/api/mesas',
+      pagos: '/api/pagos'
     },
     documentation: 'Consulta el archivo README.md para más detalles.'
   });

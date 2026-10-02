@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   initEventListeners();
   checkUrlParamsForTable();
+  checkPaymentRedirectParams();
   await checkApiHealth();
   await loadPizzas();
   await loadMesas();
@@ -53,6 +54,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     startTrackingPolling();
   }
 });
+
+// Comprobar retorno de pasarela de pagos Stripe
+function checkPaymentRedirectParams() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const pagoStatus = urlParams.get('pago');
+  const pedidoId = urlParams.get('pedido_id');
+
+  if (pagoStatus === 'exito') {
+    if (pedidoId) {
+      state.activeTrackingId = pedidoId;
+      localStorage.setItem('last_pedido_id', pedidoId);
+      document.getElementById('badge-tracking')?.classList.remove('hidden');
+      switchClientView('tracking');
+      startTrackingPolling();
+    }
+    showToast('🎉 ¡Pago verificado con Stripe! Tu comanda ha entrado en cocina.', 'success');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } else if (pagoStatus === 'cancelado') {
+    if (pedidoId) {
+      state.activeTrackingId = pedidoId;
+      document.getElementById('badge-tracking')?.classList.remove('hidden');
+      switchClientView('tracking');
+      startTrackingPolling();
+    }
+    showToast('ℹ️ Proceso de pago en Stripe cancelado. El pedido se mantiene pendiente de pago.', 'info');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+}
 
 // ==============================================================================
 // GESTIÓN DE TEMA (DARK / LIGHT MODE CON TAILWIND)
@@ -603,6 +632,34 @@ async function submitClientOrder() {
 
     if (res.ok && data.success) {
       const pedidoCreado = data.data;
+
+      // Si el cliente eligió Stripe, intentar iniciar Checkout de forma transparente
+      if (metodoPago === 'stripe') {
+        btnSubmit.textContent = '💳 Conectando con Stripe...';
+        try {
+          const stripeRes = await fetch(`${API_BASE}/pagos/crear-sesion`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pedido_id: pedidoCreado.id }),
+          });
+
+          const stripeData = await stripeRes.json();
+
+          if (stripeRes.ok && stripeData.success && stripeData.url) {
+            state.cart = [];
+            updateCartBadge();
+            closeCartDrawer();
+            showToast('🔄 Redirigiendo a pasarela segura de Stripe...', 'info');
+            window.location.href = stripeData.url;
+            return;
+          } else {
+            showToast(`⚠️ ${stripeData.message || 'Stripe no disponible en este servidor. Pedido registrado para pago en caja.'}`, 'warning');
+          }
+        } catch (stripeErr) {
+          showToast(`⚠️ Pasarela Stripe inactiva. Pedido guardado para abonar en entrega o caja.`, 'warning');
+        }
+      }
+
       state.cart = [];
       updateCartBadge();
       closeCartDrawer();
@@ -805,12 +862,27 @@ function renderKDSCard(p) {
     `;
   }
 
+  // Badge descriptivo de estado del pago
+  let pagoBadge = '';
+  if (p.metodo_pago === 'stripe') {
+    if (p.estado_pago === 'pagado') {
+      pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">💳 Stripe: Pagado</span>`;
+    } else {
+      pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">💳 Stripe: Pendiente</span>`;
+    }
+  } else if (p.metodo_pago === 'tarjeta_entrega' || p.metodo_pago === 'tarjeta_recogida') {
+    pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">💳 Datáfono</span>`;
+  } else {
+    pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/30">💵 Efectivo</span>`;
+  }
+
   return `
     <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 space-y-3 shadow-sm hover:border-slate-400 transition-colors">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${badgeColor} uppercase">${badgeText}</span>
           <strong class="font-bold text-sm">#${p.id}</strong>
+          ${pagoBadge}
         </div>
         <span class="text-xs text-slate-400">${formatTime(p.fecha)}</span>
       </div>

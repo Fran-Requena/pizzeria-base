@@ -108,6 +108,8 @@ export const initSchemaIfNeeded = async () => {
             cliente_telefono VARCHAR(30),
             cliente_direccion TEXT,
             metodo_pago VARCHAR(30) DEFAULT 'efectivo_entrega',
+            estado_pago VARCHAR(20) DEFAULT 'pendiente',
+            stripe_session_id VARCHAR(120),
             observaciones TEXT
         );
         CREATE TABLE IF NOT EXISTS lineas_pedido (
@@ -152,6 +154,16 @@ export const initSchemaIfNeeded = async () => {
         ON CONFLICT DO NOTHING;
       `);
       console.log('✅ [DB Auto-Init] Base de datos aprovisionada con tablas, pizzas, mesas y comandas de prueba.');
+    }
+
+    // Migración idempotente no destructiva para pasarela de pagos
+    try {
+      await query(`
+        ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS estado_pago VARCHAR(20) DEFAULT 'pendiente';
+        ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS stripe_session_id VARCHAR(120);
+      `);
+    } catch (migErr) {
+      console.warn('ℹ️ [DB Migración]:', migErr.message);
     }
   } catch (err) {
     console.error('⚠️ [DB Auto-Init Warning]:', err.message);

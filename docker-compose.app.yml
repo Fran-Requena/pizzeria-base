@@ -32,6 +32,9 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-pizzeria_pass_2026!}
       DB_NAME: ${DB_NAME:-pizzeria_db}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      FRONTEND_URL: ${FRONTEND_URL:-}
     networks:
       - pizzeria-network
 
