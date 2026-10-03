@@ -28,9 +28,10 @@ const state = {
   activeTrackingId: localStorage.getItem('last_pedido_id') || null,
   trackingInterval: null,
   
-  // KDS auto-refresco
+  // KDS auto-refresco y opciones
   kdsInterval: null,
   kdsFilter: 'all',
+  kdsOcultarCobrados: true,
   
   // PIN Auth
   currentPin: '',
@@ -39,6 +40,10 @@ const state = {
   posSubTab: 'nuevo',           // 'nuevo' | 'pendientes'
   cobrosFilter: 'all',          // 'all' | 'mesa' | 'domicilio' | 'recoger'
   cobroModalOrder: null,
+
+  // Histórico & Mantenimiento por Fechas
+  historicoRango: 'hoy',        // 'hoy' | 'ayer' | 'semana' | 'todos' | 'custom'
+  historicoFecha: new Date().toISOString().split('T')[0],
 };
 
 
@@ -268,6 +273,9 @@ function switchPersonalTab(tabName) {
   } else if (tabName === 'cobros') {
     loadPedidosKDS();
     renderCobrosCrudTable();
+  } else if (tabName === 'historico') {
+    loadPedidosKDS();
+    renderHistoricoTable();
   } else if (tabName === 'carta') {
     renderAdminPizzas();
   } else if (tabName === 'mesas') {
@@ -886,8 +894,8 @@ async function loadPedidosKDS() {
     if (data.success && Array.isArray(data.data)) {
       state.pedidos = data.data;
       renderKDSBoard();
-      renderPendingBillsTable();
       renderCobrosCrudTable();
+      renderHistoricoTable();
     }
   } catch (err) {
     console.error('Error al cargar comandas KDS:', err);
@@ -902,9 +910,17 @@ function renderKDSBoard() {
 
   if (!listPendiente) return;
 
-  let pedidosFiltrados = state.pedidos;
+  let pedidosFiltrados = state.pedidos || [];
   if (state.kdsFilter !== 'all') {
     pedidosFiltrados = pedidosFiltrados.filter(p => p.tipo_pedido === state.kdsFilter);
+  }
+
+  // Filtro KDS: Los pedidos finalizados y cobrados desaparecen automáticamente del tablero de los cocineros
+  if (state.kdsOcultarCobrados) {
+    pedidosFiltrados = pedidosFiltrados.filter(p => {
+      const isCerradoYCobrado = (p.estado === 'entregado' || p.estado === 'servido') && p.estado_pago === 'pagado';
+      return !isCerradoYCobrado && p.estado !== 'cancelado';
+    });
   }
 
   const pendientes = pedidosFiltrados.filter(p => p.estado === 'pendiente');
@@ -1043,7 +1059,7 @@ window.updateOrderStatus = async function(orderId, newStatus) {
 function startKdsPolling() {
   if (state.kdsInterval) clearInterval(state.kdsInterval);
   state.kdsInterval = setInterval(() => {
-    if (state.userMode !== 'cliente' && (state.activePersonalTab === 'cocina' || state.activePersonalTab === 'cobros')) {
+    if (state.userMode !== 'cliente' && (state.activePersonalTab === 'cocina' || state.activePersonalTab === 'cobros' || state.activePersonalTab === 'historico')) {
       loadPedidosKDS();
     }
   }, 5000);
@@ -1442,6 +1458,267 @@ function renderCobrosCrudTable() {
 }
 
 const renderPendingBillsTable = renderCobrosCrudTable;
+
+// ==============================================================================
+// GESTIÓN DE MANTENIMIENTO & HISTÓRICO DE PEDIDOS ORGANIZADOS POR FECHAS
+// ==============================================================================
+function renderHistoricoTable() {
+  const tbody = document.getElementById('historico-table-body');
+  if (!tbody) return;
+
+  const hoyStr = new Date().toISOString().split('T')[0];
+  const ayerDate = new Date();
+  ayerDate.setDate(ayerDate.getDate() - 1);
+  const ayerStr = ayerDate.toISOString().split('T')[0];
+
+  // Actualizar contador del día de hoy
+  const hoyCount = (state.pedidos || []).filter(p => {
+    const pFecha = p.fecha ? p.fecha.split('T')[0] : '';
+    return pFecha === hoyStr;
+  }).length;
+  const hoyBadge = document.getElementById('historico-count-hoy');
+  if (hoyBadge) hoyBadge.textContent = hoyCount;
+
+  // Filtrar según rango o fecha seleccionada
+  let filtradas = [...(state.pedidos || [])];
+
+  if (state.historicoRango === 'hoy') {
+    filtradas = filtradas.filter(p => {
+      const pFecha = p.fecha ? p.fecha.split('T')[0] : '';
+      return pFecha === hoyStr;
+    });
+  } else if (state.historicoRango === 'ayer') {
+    filtradas = filtradas.filter(p => {
+      const pFecha = p.fecha ? p.fecha.split('T')[0] : '';
+      return pFecha === ayerStr;
+    });
+  } else if (state.historicoRango === 'semana') {
+    const sieteDiasAtras = new Date();
+    sieteDiasAtras.setDate(sieteDiasAtras.getDate() - 7);
+    filtradas = filtradas.filter(p => {
+      const pDate = new Date(p.fecha);
+      return pDate >= sieteDiasAtras;
+    });
+  } else if (state.historicoRango === 'custom') {
+    const fechaPickerVal = document.getElementById('historico-date-input')?.value || state.historicoFecha;
+    if (fechaPickerVal) {
+      filtradas = filtradas.filter(p => {
+        const pFecha = p.fecha ? p.fecha.split('T')[0] : '';
+        return pFecha === fechaPickerVal;
+      });
+    }
+  }
+
+  // Buscador en tiempo real
+  const searchInput = document.getElementById('historico-search-input');
+  const searchVal = (searchInput?.value || '').trim().toLowerCase();
+  if (searchVal) {
+    filtradas = filtradas.filter(p => {
+      const matchId = p.id.toString().includes(searchVal);
+      const matchCliente = (p.cliente_nombre || '').toLowerCase().includes(searchVal);
+      const matchTel = (p.cliente_telefono || '').includes(searchVal);
+      const matchMesa = p.mesa_numero ? p.mesa_numero.toString().includes(searchVal) : false;
+      const matchDir = (p.cliente_direccion || '').toLowerCase().includes(searchVal);
+      return matchId || matchCliente || matchTel || matchMesa || matchDir;
+    });
+  }
+
+  // Cálculos de KPIs del período seleccionado
+  const pedidosPagados = filtradas.filter(p => p.estado_pago === 'pagado');
+  const totalFacturado = pedidosPagados.reduce((acc, p) => acc + (parseFloat(p.total) || 0), 0);
+  const totalPedidosCerrados = filtradas.filter(p => p.estado === 'entregado' || p.estado === 'servido' || p.estado_pago === 'pagado').length;
+  const ticketMedio = totalPedidosCerrados > 0 ? (totalFacturado / totalPedidosCerrados) : 0;
+
+  // Desglose por método de pago
+  const totalEfectivo = pedidosPagados
+    .filter(p => p.metodo_pago === 'efectivo_entrega' || p.metodo_pago === 'en_mano' || p.metodo_pago === 'efectivo' || !p.metodo_pago)
+    .reduce((acc, p) => acc + (parseFloat(p.total) || 0), 0);
+
+  const totalTarjeta = pedidosPagados
+    .filter(p => p.metodo_pago === 'tarjeta_entrega' || p.metodo_pago === 'tarjeta_recogida' || p.metodo_pago === 'datafono')
+    .reduce((acc, p) => acc + (parseFloat(p.total) || 0), 0);
+
+  const totalStripe = pedidosPagados
+    .filter(p => p.metodo_pago === 'stripe')
+    .reduce((acc, p) => acc + (parseFloat(p.total) || 0), 0);
+
+  // Actualizar KPIs en el DOM
+  const kpiTotal = document.getElementById('kpi-historico-total-eur');
+  const kpiCount = document.getElementById('kpi-historico-pedidos-count');
+  const kpiTicketMedio = document.getElementById('kpi-historico-ticket-medio');
+  const kpiEfectivo = document.getElementById('kpi-historico-efectivo');
+  const kpiTarjeta = document.getElementById('kpi-historico-tarjeta');
+  const kpiStripe = document.getElementById('kpi-historico-stripe');
+
+  if (kpiTotal) kpiTotal.textContent = `${totalFacturado.toFixed(2)} €`;
+  if (kpiCount) kpiCount.textContent = totalPedidosCerrados;
+  if (kpiTicketMedio) kpiTicketMedio.textContent = `${ticketMedio.toFixed(2)} €`;
+  if (kpiEfectivo) kpiEfectivo.textContent = `${totalEfectivo.toFixed(2)} €`;
+  if (kpiTarjeta) kpiTarjeta.textContent = `${totalTarjeta.toFixed(2)} €`;
+  if (kpiStripe) kpiStripe.textContent = `${totalStripe.toFixed(2)} €`;
+
+  if (filtradas.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" class="text-center py-12 text-slate-400">
+          <span class="text-3xl block mb-2">📅</span>
+          <span class="font-bold text-sm text-slate-700 dark:text-slate-300 block">No hay pedidos registrados en este período</span>
+          <p class="text-xs text-slate-400 mt-1">Prueba seleccionando otra fecha o "Todos".</p>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  // Ordenar por fecha más reciente primero
+  filtradas.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+  tbody.innerHTML = filtradas.map(p => {
+    // Formateo de fecha y hora
+    const d = new Date(p.fecha);
+    const fechaFormat = d.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const horaFormat = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Canal
+    let canalBadge = '';
+    if (p.tipo_pedido === 'mesa') {
+      canalBadge = `<span class="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 whitespace-nowrap">🍽️ Mesa ${p.mesa_numero || '--'}</span>`;
+    } else if (p.tipo_pedido === 'domicilio') {
+      canalBadge = `<span class="px-2 py-0.5 rounded-full text-xs font-bold bg-brand-500/10 text-brand-500 border border-brand-500/20 whitespace-nowrap">🛵 Domicilio</span>`;
+    } else {
+      canalBadge = `<span class="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 whitespace-nowrap">🥡 Recoger</span>`;
+    }
+
+    // Estado Cocina
+    let cocinaBadge = '';
+    switch (p.estado) {
+      case 'entregado':
+      case 'servido':
+        cocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">✅ Servido</span>`;
+        break;
+      case 'listo':
+        cocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20">📦 Listo</span>`;
+        break;
+      case 'en_preparacion':
+      case 'en_reparto':
+        cocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-500/10 text-purple-500 border border-purple-500/20">🔥 En Curso</span>`;
+        break;
+      case 'pendiente':
+        cocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">⏳ Recibido</span>`;
+        break;
+      default:
+        cocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300 uppercase">${p.estado}</span>`;
+    }
+
+    // Estado Pago
+    let pagoBadge = '';
+    let metodoStr = '💵 Efectivo';
+    if (p.metodo_pago === 'tarjeta_entrega' || p.metodo_pago === 'tarjeta_recogida' || p.metodo_pago === 'datafono') {
+      metodoStr = '💳 Datáfono';
+    } else if (p.metodo_pago === 'stripe') {
+      metodoStr = '💳 Stripe Online';
+    }
+
+    if (p.estado_pago === 'pagado') {
+      pagoBadge = `
+        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 inline-block">✅ Pagado</span>
+        <span class="text-[10px] text-slate-400 block mt-0.5">${metodoStr}</span>
+      `;
+    } else {
+      pagoBadge = `
+        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 inline-block">⏳ Pendiente</span>
+        <span class="text-[10px] text-slate-400 block mt-0.5">${metodoStr}</span>
+      `;
+    }
+
+    const itemsSummary = (p.lineas && p.lineas.length > 0)
+      ? p.lineas.map(l => `${l.cantidad}x ${l.nombre}`).join(', ')
+      : (p.observaciones || 'Comanda registrada');
+
+    return `
+      <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+        <td class="py-3 px-4">
+          <strong class="font-black text-sm text-slate-900 dark:text-white block">#${p.id}</strong>
+          <span class="text-[10px] text-slate-400 block">${fechaFormat} • ${horaFormat}</span>
+        </td>
+        <td class="py-3 px-4">
+          ${canalBadge}
+        </td>
+        <td class="py-3 px-4">
+          <strong class="font-bold text-slate-800 dark:text-slate-200 block truncate max-w-[130px]">${p.cliente_nombre || 'Cliente'}</strong>
+          <span class="text-[11px] text-slate-400 block truncate max-w-[130px]">${p.cliente_telefono || (p.cliente_direccion || 'Presencial')}</span>
+        </td>
+        <td class="py-3 px-4 max-w-[180px]">
+          <span class="text-xs text-slate-600 dark:text-slate-300 block truncate" title="${itemsSummary}">${itemsSummary}</span>
+        </td>
+        <td class="py-3 px-4">
+          ${cocinaBadge}
+        </td>
+        <td class="py-3 px-4">
+          ${pagoBadge}
+        </td>
+        <td class="py-3 px-4 text-right">
+          <strong class="font-display font-black text-base text-slate-900 dark:text-white block">${parseFloat(p.total).toFixed(2)} €</strong>
+        </td>
+        <td class="py-3 px-4 text-center">
+          <div class="flex items-center justify-center gap-1">
+            <button onclick="openTicketModal(${p.id})" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all cursor-pointer flex items-center gap-1" title="Ver / Imprimir Ticket Fiscal">
+              <span>🧾</span> <span>Ticket</span>
+            </button>
+            ${p.estado_pago !== 'pagado' ? `
+              <button onclick="openCobroModal(${p.id})" class="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm transition-all cursor-pointer flex items-center gap-1" title="Cobrar ahora">
+                <span>💶</span> <span>Cobrar</span>
+              </button>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function imprimirArqueoDiario() {
+  const hoyStr = new Date().toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const totalFacturado = document.getElementById('kpi-historico-total-eur')?.textContent || '0.00 €';
+  const pedidosCount = document.getElementById('kpi-historico-pedidos-count')?.textContent || '0';
+  const efec = document.getElementById('kpi-historico-efectivo')?.textContent || '0.00 €';
+  const tarj = document.getElementById('kpi-historico-tarjeta')?.textContent || '0.00 €';
+  const strp = document.getElementById('kpi-historico-stripe')?.textContent || '0.00 €';
+
+  const ticketContent = `
+========================================
+       PIZZERÍA BELLA NAPOLI
+    INFORME DE CIERRE DE CAJA / ARQUEO
+========================================
+Fecha Informe: ${hoyStr}
+Hora Emisión:  ${new Date().toLocaleTimeString()}
+Responsable:   Turno Activo (${state.userMode.toUpperCase()})
+----------------------------------------
+Comandas Cerradas:      ${pedidosCount}
+TOTAL FACTURADO:        ${totalFacturado}
+----------------------------------------
+DESGLOSE POR MODALIDAD DE COBRO:
+  - Efectivo en Cajón:  ${efec}
+  - Datáfono / TPV:     ${tarj}
+  - Stripe Online:      ${strp}
+========================================
+      Firma Responsable de Turno:
+
+
+________________________________________
+`;
+
+  const printWindow = window.open('', '', 'width=450,height=650');
+  if (printWindow) {
+    printWindow.document.write(`<pre style="font-family: monospace; font-size: 13px; line-height: 1.4; padding: 20px;">${ticketContent}</pre>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  } else {
+    alert(ticketContent);
+  }
+}
 
 window.openCobroModal = async function(orderId) {
   let order = (state.pedidos || []).find(p => p.id === orderId);
@@ -1865,9 +2142,16 @@ function initEventListeners() {
 
   document.getElementById('btn-submit-pos')?.addEventListener('click', submitPosOrder);
 
+  // Toggle KDS: Ocultar o mostrar pedidos ya entregados/servidos y cobrados
+  document.getElementById('chk-kds-ocultar-cobrados')?.addEventListener('change', (e) => {
+    state.kdsOcultarCobrados = e.target.checked;
+    renderKDSBoard();
+  });
+
   // Botones de cambio rápido de pantalla para el empleado
   document.getElementById('bar-btn-cocina')?.addEventListener('click', () => returnToStaffPanel('cocina'));
   document.getElementById('bar-btn-cobros')?.addEventListener('click', () => returnToStaffPanel('cobros'));
+  document.getElementById('bar-btn-historico')?.addEventListener('click', () => returnToStaffPanel('historico'));
   document.getElementById('bar-btn-web-cliente')?.addEventListener('click', () => {
     switchClientView('menu');
     showToast('👁️ Viendo la carta como cliente (tu turno de personal sigue activo)', 'info');
@@ -1917,6 +2201,39 @@ function initEventListeners() {
   // Buscador en tiempo real en CRUD Cobros
   document.getElementById('input-search-crud-cobros')?.addEventListener('input', () => {
     renderCobrosCrudTable();
+  });
+
+  // Pantalla Mantenimiento & Histórico de Pedidos por Fechas
+  document.getElementById('btn-refresh-historico')?.addEventListener('click', async () => {
+    await loadPedidosKDS();
+    renderHistoricoTable();
+    showToast('🔄 Histórico actualizado', 'info');
+  });
+
+  document.getElementById('btn-print-arqueo-dia')?.addEventListener('click', imprimirArqueoDiario);
+
+  document.querySelectorAll('.pill-historico-rango').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.pill-historico-rango').forEach(b => {
+        b.className = 'pill-historico-rango px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-slate-400 transition-all cursor-pointer whitespace-nowrap';
+      });
+      btn.className = 'pill-historico-rango active px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900 border border-slate-900 dark:border-white transition-all cursor-pointer whitespace-nowrap';
+      state.historicoRango = btn.dataset.rango;
+      renderHistoricoTable();
+    });
+  });
+
+  document.getElementById('historico-date-input')?.addEventListener('change', (e) => {
+    state.historicoRango = 'custom';
+    state.historicoFecha = e.target.value;
+    document.querySelectorAll('.pill-historico-rango').forEach(b => {
+      b.className = 'pill-historico-rango px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-slate-400 transition-all cursor-pointer whitespace-nowrap';
+    });
+    renderHistoricoTable();
+  });
+
+  document.getElementById('historico-search-input')?.addEventListener('input', () => {
+    renderHistoricoTable();
   });
 
   // Modal de Cobro Presencial
