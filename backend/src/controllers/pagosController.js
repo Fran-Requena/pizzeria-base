@@ -98,9 +98,8 @@ export const crearSesionCheckout = async (req, res) => {
       frontendUrl = `${proto}://${host}`.replace(/:3000$/, '');
     }
 
-    // 4. Crear sesión en Stripe
+    // 4. Crear sesión en Stripe (utilizando Dynamic Payment Methods de Stripe)
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
       line_items: lineItems,
       mode: 'payment',
       client_reference_id: String(pedido.id),

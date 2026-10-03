@@ -766,6 +766,21 @@ function renderTrackingUI(pedido) {
       `;
     }
   }
+
+  const paymentEl = document.getElementById('tracking-payment-val');
+  if (paymentEl) {
+    if (pedido.metodo_pago === 'stripe') {
+      if (pedido.estado_pago === 'pagado') {
+        paymentEl.innerHTML = '<span class="text-emerald-500 font-bold">💳 Stripe Online (Pagado)</span>';
+      } else {
+        paymentEl.innerHTML = '<span class="text-amber-500 font-bold">💳 Stripe Online (Pendiente de confirmación)</span>';
+      }
+    } else if (pedido.metodo_pago === 'tarjeta_entrega' || pedido.metodo_pago === 'tarjeta_recogida') {
+      paymentEl.textContent = '💳 Datáfono';
+    } else {
+      paymentEl.textContent = '💵 En mano al recibir';
+    }
+  }
 }
 
 function startTrackingPolling() {
