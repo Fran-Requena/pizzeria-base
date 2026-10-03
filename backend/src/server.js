@@ -8,6 +8,7 @@ import pizzasRoutes from './routes/pizzasRoutes.js';
 import pedidosRoutes from './routes/pedidosRoutes.js';
 import mesasRoutes from './routes/mesasRoutes.js';
 import pagosRoutes from './routes/pagosRoutes.js';
+import { handleWebhook } from './controllers/pagosController.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -61,6 +62,8 @@ app.use('/api/pizzas', pizzasRoutes);
 app.use('/api/pedidos', pedidosRoutes);
 app.use('/api/mesas', mesasRoutes);
 app.use('/api/pagos', pagosRoutes);
+// Alias compatible para el webhook de Stripe
+app.post('/api/webhooks/stripe', handleWebhook);
 
 // Ruta base con información didáctica
 app.get('/', (req, res) => {
