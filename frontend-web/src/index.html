@@ -56,8 +56,44 @@
       }
     }
   </script>
+  <style>
+    @media print {
+      body * {
+        visibility: hidden !important;
+      }
+      #printable-ticket-content, #printable-ticket-content * {
+        visibility: visible !important;
+      }
+      #printable-ticket-content {
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 78mm !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 8px !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        font-family: 'Courier New', Courier, monospace !important;
+        font-size: 11px !important;
+        line-height: 1.2 !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+      #modal-ticket {
+        background: transparent !important;
+        position: static !important;
+        display: block !important;
+        padding: 0 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
 </head>
 <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 font-sans min-h-screen flex flex-col antialiased transition-colors duration-200">
+
 
   <!-- ==================== HEADER PRINCIPAL ==================== -->
   <header class="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
@@ -514,13 +550,27 @@
         <div id="mesas-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
       </section>
 
-      <!-- TAB 4: TPV MOSTRADOR -->
+      <!-- TAB 4: TPV MOSTRADOR & CAJA -->
       <section id="tab-mostrador" class="tab-content hidden space-y-6">
-        <div>
-          <h2 class="font-display font-black text-2xl text-slate-900 dark:text-white">➕ Crear Pedido Manual en Mostrador / TPV</h2>
-          <p class="text-sm text-slate-500 dark:text-slate-400">Para registrar pedidos telefónicos o clientes presenciales en caja.</p>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="font-display font-black text-2xl text-slate-900 dark:text-white">💶 TPV Caja & Terminal de Cobros</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Toma de comandas presenciales y gestión de cobros de mesas, reparto y barra.</p>
+          </div>
+          <!-- Sub-pestañas TPV -->
+          <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700/60 self-start sm:self-auto">
+            <button id="btn-subtab-pos-nuevo" class="subtab-pos-btn active px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-500 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1.5">
+              <span>➕</span> <span>Nuevo Pedido</span>
+            </button>
+            <button id="btn-subtab-pos-pendientes" class="subtab-pos-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer flex items-center gap-1.5">
+              <span>💶</span> <span>Cuentas por Cobrar</span>
+              <span id="badge-pos-pendientes-count" class="px-1.5 py-0.2 text-[10px] font-bold bg-amber-500 text-white rounded-full">0</span>
+            </button>
+          </div>
         </div>
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- VISTA SUB-TAB 1: CREAR NUEVO PEDIDO -->
+        <div id="subtab-view-pos-nuevo" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div class="lg:col-span-8 space-y-4">
             <h3 class="font-bold text-sm text-slate-400 uppercase tracking-wider">Selecciona las pizzas:</h3>
             <div id="pos-pizzas-list" class="grid grid-cols-2 sm:grid-cols-3 gap-4"></div>
@@ -574,6 +624,28 @@
             <button id="btn-submit-pos" class="w-full py-3 rounded-xl bg-brand-500 text-white font-bold hover:bg-brand-600 disabled:opacity-50 transition-all cursor-pointer" disabled>
               🚀 Enviar Pedido a Cocina
             </button>
+          </div>
+        </div>
+
+        <!-- VISTA SUB-TAB 2: CUENTAS & COBROS PENDIENTES -->
+        <div id="subtab-view-pos-pendientes" class="hidden space-y-4">
+          <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 shadow-sm">
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1 shrink-0">Filtrar:</span>
+              <button class="filter-cobros-btn active px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900 border border-slate-900 dark:border-white transition-all cursor-pointer whitespace-nowrap" data-filter="all">Todas las Pendientes</button>
+              <button class="filter-cobros-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer whitespace-nowrap" data-filter="mesa">🍽️ Mesas</button>
+              <button class="filter-cobros-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer whitespace-nowrap" data-filter="domicilio">🛵 Domicilio</button>
+              <button class="filter-cobros-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer whitespace-nowrap" data-filter="recoger">🥡 Recoger</button>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button id="btn-refresh-cobros" class="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer flex items-center gap-1.5">
+                <span>🔄</span> <span>Actualizar Cuentas</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="grid-cuentas-pendientes" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div class="col-span-full text-center py-12 text-slate-400">Cargando cuentas pendientes...</div>
           </div>
         </div>
       </section>
@@ -881,8 +953,244 @@
     </div>
   </div>
 
+  <!-- ==================== MODAL DE COBRO EN CAJA / TPV ==================== -->
+  <div id="modal-cobro" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 relative">
+      
+      <button id="btn-close-cobro-modal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white text-2xl cursor-pointer">&times;</button>
+      
+      <!-- ENCABEZADO -->
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-2xl shrink-0">
+          💶
+        </div>
+        <div>
+          <h3 class="font-display font-black text-xl sm:text-2xl text-slate-900 dark:text-white leading-tight">
+            Cobro de Pedido #<span id="cobro-order-id">--</span>
+          </h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400" id="cobro-order-subtitle">Gestión de pago en caja / mostrador</p>
+        </div>
+      </div>
+
+      <!-- RESUMEN DE LA COMANDA -->
+      <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
+        <div>
+          <span id="cobro-order-tipo" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-brand-500/10 text-brand-500 uppercase border border-brand-500/30">🍽️ Mesa 1</span>
+          <h4 id="cobro-order-cliente" class="font-bold text-sm text-slate-800 dark:text-slate-100 mt-1">Cliente</h4>
+          <p id="cobro-order-items-summary" class="text-xs text-slate-500">-- pizzas</p>
+        </div>
+        <div class="text-right">
+          <span class="text-xs font-semibold text-slate-400 block uppercase">Total a Cobrar</span>
+          <strong id="cobro-order-total" class="font-display font-black text-2xl sm:text-3xl text-brand-500">0.00 €</strong>
+        </div>
+      </div>
+
+      <!-- SELECTOR DE FORMA DE PAGO -->
+      <div class="space-y-2">
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider">Selecciona forma de pago:</label>
+        <div class="grid grid-cols-3 gap-2.5">
+          <label class="cursor-pointer">
+            <input type="radio" name="cobro-method" value="efectivo_entrega" checked class="peer sr-only">
+            <div class="p-3 rounded-2xl border-2 border-slate-200 dark:border-slate-700 peer-checked:border-emerald-500 peer-checked:bg-emerald-500/10 peer-checked:text-emerald-500 text-center transition-all flex flex-col items-center justify-center gap-1">
+              <span class="text-xl">💵</span>
+              <strong class="text-xs">Efectivo</strong>
+              <small class="text-[10px] text-slate-400">Con cambio</small>
+            </div>
+          </label>
+
+          <label class="cursor-pointer">
+            <input type="radio" name="cobro-method" value="tarjeta_entrega" class="peer sr-only">
+            <div class="p-3 rounded-2xl border-2 border-slate-200 dark:border-slate-700 peer-checked:border-blue-500 peer-checked:bg-blue-500/10 peer-checked:text-blue-500 text-center transition-all flex flex-col items-center justify-center gap-1">
+              <span class="text-xl">💳</span>
+              <strong class="text-xs">Datáfono</strong>
+              <small class="text-[10px] text-slate-400">Tarjeta física</small>
+            </div>
+          </label>
+
+          <label class="cursor-pointer">
+            <input type="radio" name="cobro-method" value="stripe" class="peer sr-only">
+            <div class="p-3 rounded-2xl border-2 border-slate-200 dark:border-slate-700 peer-checked:border-indigo-500 peer-checked:bg-indigo-500/10 peer-checked:text-indigo-500 text-center transition-all flex flex-col items-center justify-center gap-1">
+              <span class="text-xl">🌐</span>
+              <strong class="text-xs">Stripe</strong>
+              <small class="text-[10px] text-slate-400">Online / QR</small>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- PANEL DE EFECTIVO: CALCULADORA DE CAMBIO -->
+      <div id="panel-cobro-efectivo" class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1">Importe entregado por el cliente (€):</label>
+          <div class="relative">
+            <input type="number" id="input-importe-entregado" step="0.01" min="0" placeholder="0.00" class="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 text-lg font-bold text-slate-900 dark:text-white focus:border-emerald-500 focus:outline-none">
+            <span class="absolute right-4 top-3 text-lg font-bold text-slate-400">€</span>
+          </div>
+        </div>
+
+        <!-- BOTONES RÁPIDOS DE BILLETES -->
+        <div>
+          <span class="text-[11px] font-semibold text-slate-400 block mb-1.5">Billetes rápidos:</span>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button type="button" class="btn-quick-cash px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer transition-all" data-cash="exact">Exacto</button>
+            <button type="button" class="btn-quick-cash px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer transition-all" data-cash="10">10 €</button>
+            <button type="button" class="btn-quick-cash px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer transition-all" data-cash="20">20 €</button>
+            <button type="button" class="btn-quick-cash px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer transition-all" data-cash="50">50 €</button>
+            <button type="button" class="btn-quick-cash px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer transition-all" data-cash="100">100 €</button>
+          </div>
+        </div>
+
+        <!-- INDICADOR DE CAMBIO A DEVOLVER -->
+        <div id="box-cambio-info" class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider">Cambio a Devolver:</span>
+          <strong id="val-cambio-devolver" class="font-display font-black text-xl">0.00 €</strong>
+        </div>
+      </div>
+
+      <!-- PANEL DE DATÁFONO -->
+      <div id="panel-cobro-datafono" class="hidden p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-blue-600 dark:text-blue-400 text-xs space-y-2">
+        <div class="flex items-center gap-2 font-bold text-sm">
+          <span>💳</span> <span>Cobro con Datáfono Bancario Físico</span>
+        </div>
+        <p>Acerca la tarjeta o contactless del cliente al terminal TPV físico. Confirma el cobro una vez la operación haya sido aprobada por el datáfono.</p>
+      </div>
+
+      <!-- PANEL DE STRIPE -->
+      <div id="panel-cobro-stripe" class="hidden p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 text-xs space-y-2">
+        <div class="flex items-center gap-2 font-bold text-sm">
+          <span>🌐</span> <span>Pasarela de Pago Online Stripe</span>
+        </div>
+        <p>Si el cliente desea pagar desde su propio móvil con tarjeta bancaria, Apple Pay o Google Pay, puedes abrir la sesión de Stripe.</p>
+        <button type="button" id="btn-cobro-abrir-stripe" class="mt-1 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer">
+          🔗 Iniciar Pasarela de Pago Stripe
+        </button>
+      </div>
+
+      <!-- BOTONES DE ACCIÓN -->
+      <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+        <button type="button" id="btn-cancel-cobro" class="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition-all">
+          Cancelar
+        </button>
+        <button type="button" id="btn-confirmar-cobro" class="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm shadow-md transition-all cursor-pointer flex items-center gap-2">
+          <span>✅</span> <span>Confirmar Cobro & Emitir Ticket</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== MODAL DE TICKET FISCAL SIMPLIFICADO ==================== -->
+  <div id="modal-ticket" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4 relative max-h-[90vh] flex flex-col">
+      
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 no-print">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🧾</span>
+          <h3 class="font-display font-bold text-lg text-slate-900 dark:text-white">Ticket Fiscal / Factura Simplificada</h3>
+        </div>
+        <button id="btn-close-ticket-modal" class="text-slate-400 hover:text-slate-600 dark:hover:text-white text-2xl cursor-pointer">&times;</button>
+      </div>
+
+      <!-- VISTA IMPRIMIBLE DEL TICKET TÉRMICO -->
+      <div class="overflow-y-auto flex-1 p-2">
+        <div id="printable-ticket-content" class="bg-white text-black p-5 rounded-2xl border border-slate-200 shadow-sm font-mono text-xs leading-relaxed space-y-3">
+          
+          <!-- Encabezado Pizzería -->
+          <div class="text-center space-y-0.5 border-b border-dashed border-slate-300 pb-3">
+            <h2 class="text-base font-black tracking-wide">🍕 PIZZERÍA BELLA NAPOLI</h2>
+            <p class="text-[11px] text-slate-600">Bella Napoli Restauración S.L.</p>
+            <p class="text-[11px] text-slate-600">NIF / CIF: B-03829104</p>
+            <p class="text-[11px] text-slate-600">C/ Mayor 42, 03660 Novelda (Alicante)</p>
+            <p class="text-[11px] text-slate-600">Tel: 965 60 00 00 • info@bellanapoli.es</p>
+          </div>
+
+          <!-- Datos del Ticket -->
+          <div class="text-[11px] border-b border-dashed border-slate-300 pb-2 space-y-1">
+            <div class="flex justify-between">
+              <span>N.º Ticket: <strong id="ticket-num">FAC-2026---</strong></span>
+              <span id="ticket-fecha">--/--/---- --:--</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Canal: <strong id="ticket-tipo">Mesa --</strong></span>
+              <span>Estado: <strong class="text-emerald-700">PAGADO</strong></span>
+            </div>
+            <div>
+              <span>Cliente: <strong id="ticket-cliente">--</strong></span>
+            </div>
+          </div>
+
+          <!-- Tabla de Artículos -->
+          <div class="border-b border-dashed border-slate-300 pb-2">
+            <div class="grid grid-cols-12 font-bold text-[11px] border-b border-slate-200 pb-1 mb-1">
+              <span class="col-span-2">UDS</span>
+              <span class="col-span-6">DESCRIPCIÓN</span>
+              <span class="col-span-4 text-right">IMPORTE</span>
+            </div>
+            <div id="ticket-items-list" class="space-y-1 text-[11px]">
+              <!-- Items dinámicos -->
+            </div>
+          </div>
+
+          <!-- Desglose de Totales e Impuestos -->
+          <div class="border-b border-dashed border-slate-300 pb-2 text-[11px] space-y-1">
+            <div class="flex justify-between text-slate-600">
+              <span>Base Imponible (10%):</span>
+              <span id="ticket-base-imp">0.00 €</span>
+            </div>
+            <div class="flex justify-between text-slate-600">
+              <span>IVA Hostelería (10%):</span>
+              <span id="ticket-iva-val">0.00 €</span>
+            </div>
+            <div class="flex justify-between text-sm font-black pt-1 border-t border-slate-300 text-black">
+              <span>TOTAL FACTURA:</span>
+              <span id="ticket-total-val" class="text-base">0.00 €</span>
+            </div>
+          </div>
+
+          <!-- Detalles del Pago -->
+          <div class="border-b border-dashed border-slate-300 pb-2 text-[11px] space-y-0.5">
+            <div class="flex justify-between">
+              <span>Forma de Pago:</span>
+              <strong id="ticket-metodo-val">EFECTIVO</strong>
+            </div>
+            <div id="ticket-cash-details" class="space-y-0.5">
+              <div class="flex justify-between text-slate-600">
+                <span>Entregado:</span>
+                <span id="ticket-entregado-val">0.00 €</span>
+              </div>
+              <div class="flex justify-between font-bold">
+                <span>Cambio:</span>
+                <span id="ticket-cambio-val">0.00 €</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pie de Ticket -->
+          <div class="text-center pt-2 space-y-1 text-[10px] text-slate-600">
+            <p class="font-bold">¡Grazie per la vostra visita! 🇮🇹</p>
+            <p>IVA incluido según la legislación vigente.</p>
+            <p>www.guillermofoix.org</p>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- BOTONES DE ACCIÓN (NO IMPRIMIBLES) -->
+      <div class="flex items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-800 no-print">
+        <button type="button" id="btn-ticket-close" class="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition-all">
+          Cerrar
+        </button>
+        <button type="button" id="btn-print-ticket" class="px-6 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-2">
+          <span>🖨️</span> <span>Imprimir Ticket Fiscal</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
   <!-- TOAST NOTIFICATIONS -->
   <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
 
   <script src="main.js"></script>
 </body>

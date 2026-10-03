@@ -385,3 +385,56 @@ export const updateEstadoPedido = async (req, res) => {
     });
   }
 };
+
+/**
+ * Registrar cobro presencial de un pedido en caja o reparto (Efectivo, Datáfono o Stripe)
+ */
+export const registrarCobroPedido = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { metodo_pago, importe_entregado, cambio } = req.body;
+
+    const sql = `
+      UPDATE pedidos 
+      SET estado_pago = 'pagado',
+          metodo_pago = COALESCE($1, metodo_pago)
+      WHERE id = $2 
+      RETURNING *
+    `;
+
+    const result = await query(sql, [metodo_pago || null, id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: `Pedido #${id} no encontrado` });
+    }
+
+    const pedido = result.rows[0];
+
+    // Obtener líneas para poder emitir el ticket completo
+    const lineasRes = await query(`
+      SELECT lp.id, lp.cantidad, lp.precio_unitario, lp.notas, pz.nombre
+      FROM lineas_pedido lp
+      JOIN pizzas pz ON lp.pizza_id = pz.id
+      WHERE lp.pedido_id = $1
+    `, [id]);
+
+    res.json({
+      success: true,
+      message: `Cobro del pedido #${id} registrado con éxito`,
+      data: {
+        ...pedido,
+        lineas: lineasRes.rows,
+      },
+      detalles_cobro: {
+        metodo_pago: pedido.metodo_pago,
+        total: pedido.total,
+        importe_entregado: importe_entregado || pedido.total,
+        cambio: cambio || 0,
+        fecha_cobro: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error(`Error al registrar cobro del pedido #${req.params.id}:`, error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+

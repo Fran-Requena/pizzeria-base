@@ -3,7 +3,8 @@ import {
   getAllPedidos, 
   getPedidoById, 
   createPedido, 
-  updateEstadoPedido 
+  updateEstadoPedido,
+  registrarCobroPedido
 } from '../controllers/pedidosController.js';
 
 const router = Router();
@@ -14,7 +15,10 @@ router.get('/:id', getPedidoById);
 router.post('/', createPedido);
 router.put('/:id/estado', updateEstadoPedido);
 router.patch('/:id/estado', updateEstadoPedido);
+router.put('/:id/cobro', registrarCobroPedido);
+router.post('/:id/cobro', registrarCobroPedido);
 router.put('/:id', updateEstadoPedido);
 router.patch('/:id', updateEstadoPedido);
 
 export default router;
+

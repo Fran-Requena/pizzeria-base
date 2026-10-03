@@ -34,7 +34,13 @@ const state = {
   
   // PIN Auth
   currentPin: '',
+
+  // Cobros & Cuentas TPV
+  posSubTab: 'nuevo',           // 'nuevo' | 'pendientes'
+  cobrosFilter: 'all',          // 'all' | 'mesa' | 'domicilio' | 'recoger'
+  cobroModalOrder: null,
 };
+
 
 // ==============================================================================
 // INICIALIZACIÓN
@@ -236,8 +242,11 @@ function switchPersonalTab(tabName) {
     loadMesas();
   } else if (tabName === 'mostrador') {
     renderPosCatalog();
+    loadPedidosKDS();
+    renderPendingBillsTable();
   }
 }
+
 
 // ==============================================================================
 // AUTENTICACIÓN PERSONAL (PIN 1111 / 9999)
@@ -807,9 +816,17 @@ function renderTrackingUI(pedido) {
       if (pedido.estado_pago === 'pagado') {
         paymentEl.innerHTML = '<span class="text-emerald-500 font-bold">💳 Stripe Online (Pagado)</span>';
       } else {
-        paymentEl.innerHTML = '<span class="text-amber-500 font-bold">💳 Stripe Online (Pendiente de confirmación)</span>';
+        paymentEl.innerHTML = `
+          <div class="space-y-1.5">
+            <span class="text-amber-500 font-bold block">💳 Stripe Online (Pendiente de Pago)</span>
+            <button onclick="iniciarStripeParaPedido(${pedido.id})" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow transition-all cursor-pointer flex items-center gap-1.5">
+              <span>💳</span> <span>Completar Pago con Tarjeta</span>
+            </button>
+          </div>
+        `;
       }
     } else if (pedido.metodo_pago === 'tarjeta_entrega' || pedido.metodo_pago === 'tarjeta_recogida') {
+
       paymentEl.textContent = '💳 Datáfono';
     } else if (pedido.metodo_pago === 'pago_mesa') {
       paymentEl.textContent = '🍽️ Pago en Mesa (Cuenta solicitada)';
@@ -838,11 +855,13 @@ async function loadPedidosKDS() {
     if (data.success && Array.isArray(data.data)) {
       state.pedidos = data.data;
       renderKDSBoard();
+      renderPendingBillsTable();
     }
   } catch (err) {
     console.error('Error al cargar comandas KDS:', err);
   }
 }
+
 
 function renderKDSBoard() {
   const listPendiente = document.getElementById('list-pedidos-pendiente');
@@ -952,11 +971,21 @@ function renderKDSCard(p) {
 
       ${p.observaciones ? `<div class="p-2 rounded-lg bg-amber-500/10 border-l-2 border-amber-500 text-xs text-amber-600 dark:text-amber-400">💬 ${p.observaciones}</div>` : ''}
 
-      <div class="pt-1">
+      <div class="pt-1 space-y-1.5">
         ${actionButtons}
+        ${p.estado_pago === 'pendiente' ? `
+          <button onclick="openCobroModal(${p.id})" class="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5">
+            <span>💶</span> <span>Cobrar (${parseFloat(p.total).toFixed(2)} €)</span>
+          </button>
+        ` : `
+          <button onclick="openTicketModal(${p.id})" class="w-full py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700/80 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5">
+            <span>🧾</span> <span>Ver Ticket Fiscal</span>
+          </button>
+        `}
       </div>
     </div>
   `;
+
 }
 
 window.updateOrderStatus = async function(orderId, newStatus) {
@@ -1207,9 +1236,366 @@ function renderPosTicket() {
 }
 
 // ==============================================================================
+// GESTIÓN DE COBROS, CUENTAS PENDIENTES & TICKET FISCAL
+// ==============================================================================
+function switchPosSubTab(subTabName) {
+  state.posSubTab = subTabName;
+  const btnNuevo = document.getElementById('btn-subtab-pos-nuevo');
+  const btnPendientes = document.getElementById('btn-subtab-pos-pendientes');
+  const viewNuevo = document.getElementById('subtab-view-pos-nuevo');
+  const viewPendientes = document.getElementById('subtab-view-pos-pendientes');
+
+  if (subTabName === 'nuevo') {
+    btnNuevo.className = 'subtab-pos-btn active px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-500 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1.5';
+    btnPendientes.className = 'subtab-pos-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer flex items-center gap-1.5';
+    viewNuevo?.classList.remove('hidden');
+    viewPendientes?.classList.add('hidden');
+  } else {
+    btnPendientes.className = 'subtab-pos-btn active px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-500 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1.5';
+    btnNuevo.className = 'subtab-pos-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer flex items-center gap-1.5';
+    viewPendientes?.classList.remove('hidden');
+    viewNuevo?.classList.add('hidden');
+    renderPendingBillsTable();
+  }
+}
+
+function renderPendingBillsTable() {
+  const container = document.getElementById('grid-cuentas-pendientes');
+  const badgeCount = document.getElementById('badge-pos-pendientes-count');
+  if (!container) return;
+
+  const todasPendientes = (state.pedidos || []).filter(p => p.estado_pago === 'pendiente');
+  if (badgeCount) badgeCount.textContent = todasPendientes.length;
+
+  let filtradas = todasPendientes;
+  if (state.cobrosFilter !== 'all') {
+    filtradas = filtradas.filter(p => p.tipo_pedido === state.cobrosFilter);
+  }
+
+  if (filtradas.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full text-center py-12 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-3">
+        <span class="text-4xl block">🎉</span>
+        <h4 class="font-display font-bold text-lg text-slate-800 dark:text-slate-200">¡Todas las cuentas al día!</h4>
+        <p class="text-xs text-slate-500 max-w-sm mx-auto">No hay comandas pendientes de cobro ${state.cobrosFilter !== 'all' ? `en modalidad "${state.cobrosFilter}"` : 'en este momento'}.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = filtradas.map(p => {
+    let badgeColor = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
+    let badgeText = `🍽️ Mesa ${p.mesa_numero || '--'}`;
+
+    if (p.tipo_pedido === 'domicilio') {
+      badgeColor = 'bg-brand-500/10 text-brand-500 border-brand-500/30';
+      badgeText = `🛵 Domicilio`;
+    } else if (p.tipo_pedido === 'recoger') {
+      badgeColor = 'bg-amber-500/10 text-amber-500 border-amber-500/30';
+      badgeText = `🥡 Recoger`;
+    }
+
+    const lineasHtml = (p.lineas || []).map(l => `
+      <div class="flex justify-between items-center text-xs py-0.5">
+        <span class="truncate">${l.cantidad}x ${l.nombre}</span>
+        <strong class="text-slate-800 dark:text-slate-200">${(parseFloat(l.precio_unitario || (l.subtotal / l.cantidad) || 0) * l.cantidad).toFixed(2)} €</strong>
+      </div>
+    `).join('') || '<span class="text-xs text-slate-400">Sin desglose de líneas</span>';
+
+    return `
+      <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4 hover:border-amber-500/50 transition-all">
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${badgeColor} uppercase">${badgeText}</span>
+              <strong class="font-bold text-sm">#${p.id}</strong>
+            </div>
+            <span class="text-[11px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">⏳ Pendiente</span>
+          </div>
+
+          <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs">
+            <strong class="block text-slate-900 dark:text-white text-sm">${p.cliente_nombre || 'Cliente'}</strong>
+            ${p.cliente_telefono ? `<span class="text-slate-500 block">📞 Tel: ${p.cliente_telefono}</span>` : ''}
+            ${p.cliente_direccion ? `<span class="text-blue-500 dark:text-blue-400 block font-medium mt-0.5 truncate">📍 ${p.cliente_direccion}</span>` : ''}
+            <span class="text-slate-400 text-[11px] block mt-1">Hora: ${formatTime(p.fecha)} • Estado: <strong class="text-slate-700 dark:text-slate-300 uppercase">${p.estado}</strong></span>
+          </div>
+
+          <div class="space-y-1 text-slate-600 dark:text-slate-400 max-h-24 overflow-y-auto pr-1">
+            ${lineasHtml}
+          </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500 uppercase">Total a Cobrar:</span>
+            <strong class="font-display font-black text-2xl text-brand-500">${parseFloat(p.total).toFixed(2)} €</strong>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="openTicketModal(${p.id})" class="py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1">
+              <span>🧾</span> <span>Pre-Ticket</span>
+            </button>
+            <button onclick="openCobroModal(${p.id})" class="py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1">
+              <span>💶</span> <span>Cobrar</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.openCobroModal = async function(orderId) {
+  let order = (state.pedidos || []).find(p => p.id === orderId);
+  if (!order || !order.lineas) {
+    try {
+      const res = await fetch(`${API_BASE}/pedidos/${orderId}`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        order = data.data;
+      }
+    } catch (err) {
+      console.error('Error al cargar pedido para cobro:', err);
+    }
+  }
+
+  if (!order) {
+    showToast(`⚠️ No se encontró el pedido #${orderId}`, 'error');
+    return;
+  }
+
+  state.cobroModalOrder = order;
+
+  document.getElementById('cobro-order-id').textContent = order.id;
+  document.getElementById('cobro-order-cliente').textContent = order.cliente_nombre || 'Cliente';
+  document.getElementById('cobro-order-total').textContent = `${parseFloat(order.total).toFixed(2)} €`;
+
+  const tipoBadge = document.getElementById('cobro-order-tipo');
+  if (order.tipo_pedido === 'domicilio') {
+    tipoBadge.textContent = '🛵 Domicilio';
+    tipoBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-brand-500/10 text-brand-500 uppercase border border-brand-500/30';
+  } else if (order.tipo_pedido === 'recoger') {
+    tipoBadge.textContent = '🥡 Para Recoger';
+    tipoBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-500 uppercase border border-amber-500/30';
+  } else {
+    tipoBadge.textContent = `🍽️ Mesa ${order.mesa_numero || '--'}`;
+    tipoBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-500 uppercase border border-emerald-500/30';
+  }
+
+  const itemsCount = (order.lineas || []).reduce((acc, i) => acc + (parseInt(i.cantidad, 10) || 1), 0);
+  document.getElementById('cobro-order-items-summary').textContent = `${itemsCount} pizza(s) en la comanda`;
+
+  // Pre-seleccionar método
+  let methodToSelect = 'efectivo_entrega';
+  if (order.metodo_pago === 'stripe') {
+    methodToSelect = 'stripe';
+  } else if (order.metodo_pago === 'tarjeta_entrega' || order.metodo_pago === 'tarjeta_recogida') {
+    methodToSelect = 'tarjeta_entrega';
+  }
+
+  const radio = document.querySelector(`input[name="cobro-method"][value="${methodToSelect}"]`);
+  if (radio) radio.checked = true;
+
+  updateCobroMethodPanels();
+
+  // Inicializar importe en efectivo con importe exacto
+  const inputEntregado = document.getElementById('input-importe-entregado');
+  if (inputEntregado) {
+    inputEntregado.value = parseFloat(order.total).toFixed(2);
+  }
+  updateCambioCalculator();
+
+  document.getElementById('modal-cobro').classList.remove('hidden');
+};
+
+function updateCobroMethodPanels() {
+  const method = document.querySelector('input[name="cobro-method"]:checked')?.value || 'efectivo_entrega';
+  document.getElementById('panel-cobro-efectivo')?.classList.toggle('hidden', method !== 'efectivo_entrega');
+  document.getElementById('panel-cobro-datafono')?.classList.toggle('hidden', method !== 'tarjeta_entrega');
+  document.getElementById('panel-cobro-stripe')?.classList.toggle('hidden', method !== 'stripe');
+}
+
+function updateCambioCalculator() {
+  if (!state.cobroModalOrder) return;
+
+  const total = parseFloat(state.cobroModalOrder.total) || 0;
+  const input = document.getElementById('input-importe-entregado');
+  const entregado = parseFloat(input?.value) || 0;
+  const cambio = entregado - total;
+
+  const box = document.getElementById('box-cambio-info');
+  const val = document.getElementById('val-cambio-devolver');
+
+  if (cambio >= 0) {
+    box.className = 'p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-between transition-all';
+    box.querySelector('span').textContent = 'Cambio a Devolver:';
+    val.textContent = `${cambio.toFixed(2)} €`;
+  } else {
+    box.className = 'p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 flex items-center justify-between transition-all';
+    box.querySelector('span').textContent = 'Falta por Abonar:';
+    val.textContent = `${Math.abs(cambio).toFixed(2)} €`;
+  }
+}
+
+async function confirmarCobroModal() {
+  const order = state.cobroModalOrder;
+  if (!order) return;
+
+  const method = document.querySelector('input[name="cobro-method"]:checked')?.value || 'efectivo_entrega';
+  const total = parseFloat(order.total) || 0;
+  let entregado = total;
+  let cambio = 0;
+
+  if (method === 'efectivo_entrega') {
+    entregado = parseFloat(document.getElementById('input-importe-entregado').value) || 0;
+    if (entregado < total) {
+      if (!confirm(`⚠️ El importe entregado (${entregado.toFixed(2)} €) es inferior al total (${total.toFixed(2)} €).\n\n¿Deseas registrar el cobro de todos modos?`)) {
+        return;
+      }
+    }
+    cambio = Math.max(0, entregado - total);
+  }
+
+  const btnConfirmar = document.getElementById('btn-confirmar-cobro');
+  btnConfirmar.disabled = true;
+  btnConfirmar.innerHTML = '<span>⏳</span> <span>Registrando Cobro...</span>';
+
+  try {
+    const res = await fetch(`${API_BASE}/pedidos/${order.id}/cobro`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        metodo_pago: method,
+        importe_entregado: entregado,
+        cambio: cambio,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      showToast(`🎉 ¡Cobro del Pedido #${order.id} registrado con éxito!`, 'success');
+      document.getElementById('modal-cobro').classList.add('hidden');
+
+      // Actualizar pedido en estado local
+      order.estado_pago = 'pagado';
+      order.metodo_pago = method;
+
+      await loadPedidosKDS();
+      renderPendingBillsTable();
+
+      // Abrir automáticamente el ticket fiscal
+      openTicketModal(order.id, data);
+    } else {
+      throw new Error(data.message || 'Error al registrar el cobro');
+    }
+  } catch (err) {
+    showToast(`❌ ${err.message}`, 'error');
+  } finally {
+    btnConfirmar.disabled = false;
+    btnConfirmar.innerHTML = '<span>✅</span> <span>Confirmar Cobro & Emitir Ticket</span>';
+  }
+}
+
+window.openTicketModal = async function(orderId, cobroResponseData) {
+  let order = null;
+  let detalles = null;
+
+  if (cobroResponseData && cobroResponseData.data) {
+    order = cobroResponseData.data;
+    detalles = cobroResponseData.detalles_cobro;
+  } else {
+    order = (state.pedidos || []).find(p => p.id === orderId);
+    if (!order || !order.lineas) {
+      try {
+        const res = await fetch(`${API_BASE}/pedidos/${orderId}`);
+        const data = await res.json();
+        if (res.ok && data.success) {
+          order = data.data;
+        }
+      } catch (err) {
+        console.error('Error al obtener datos del ticket:', err);
+      }
+    }
+  }
+
+  if (!order) {
+    showToast(`⚠️ No se pudo generar el ticket para el pedido #${orderId}`, 'error');
+    return;
+  }
+
+  const total = parseFloat(order.total) || 0;
+  const baseImp = total / 1.10;
+  const iva = total - baseImp;
+
+  document.getElementById('ticket-num').textContent = `FAC-2026-${order.id.toString().padStart(4, '0')}`;
+  document.getElementById('ticket-fecha').textContent = new Date().toLocaleString('es-ES', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+
+  const tipoStr = order.tipo_pedido === 'mesa' ? `Mesa #${order.mesa_numero || '--'}` : (order.tipo_pedido === 'domicilio' ? 'A Domicilio' : 'Para Recoger');
+  document.getElementById('ticket-tipo').textContent = tipoStr;
+  document.getElementById('ticket-cliente').textContent = order.cliente_nombre || 'Cliente Contado';
+
+  const itemsList = document.getElementById('ticket-items-list');
+  if (itemsList) {
+    itemsList.innerHTML = (order.lineas || []).map(l => {
+      const cant = parseInt(l.cantidad, 10) || 1;
+      const pu = parseFloat(l.precio_unitario || (l.subtotal / cant) || 0);
+      const sub = pu * cant;
+      return `
+        <div class="grid grid-cols-12 py-0.5">
+          <span class="col-span-2 font-bold">${cant}x</span>
+          <span class="col-span-6 truncate">${l.nombre || 'Pizza'}</span>
+          <span class="col-span-4 text-right font-bold">${sub.toFixed(2)} €</span>
+        </div>
+      `;
+    }).join('') || '<div class="text-center py-2 text-slate-500">Pizzas seleccionadas</div>';
+  }
+
+  document.getElementById('ticket-base-imp').textContent = `${baseImp.toFixed(2)} €`;
+  document.getElementById('ticket-iva-val').textContent = `${iva.toFixed(2)} €`;
+  document.getElementById('ticket-total-val').textContent = `${total.toFixed(2)} €`;
+
+  const metodoStr = (order.metodo_pago === 'stripe') ? 'STRIPE ONLINE' : ((order.metodo_pago === 'tarjeta_entrega' || order.metodo_pago === 'tarjeta_recogida') ? 'DATÁFONO BANCARIO' : 'EFECTIVO');
+  document.getElementById('ticket-metodo-val').textContent = metodoStr;
+
+  const cashDetails = document.getElementById('ticket-cash-details');
+  if (detalles && order.metodo_pago === 'efectivo_entrega') {
+    cashDetails?.classList.remove('hidden');
+    document.getElementById('ticket-entregado-val').textContent = `${parseFloat(detalles.importe_entregado).toFixed(2)} €`;
+    document.getElementById('ticket-cambio-val').textContent = `${parseFloat(detalles.cambio).toFixed(2)} €`;
+  } else {
+    cashDetails?.classList.add('hidden');
+  }
+
+  document.getElementById('modal-ticket').classList.remove('hidden');
+};
+
+window.iniciarStripeParaPedido = async function(orderId) {
+  try {
+    showToast('🔄 Conectando con Stripe Checkout...', 'info');
+    const res = await fetch(`${API_BASE}/pagos/crear-sesion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pedido_id: orderId }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success && data.url) {
+      window.location.href = data.url;
+    } else {
+      showToast(`⚠️ ${data.message || 'No se pudo iniciar sesión de Stripe.'}`, 'warning');
+    }
+  } catch (err) {
+    showToast(`❌ Error al conectar con Stripe: ${err.message}`, 'error');
+  }
+};
+
+// ==============================================================================
 // HELPERS Y EVENT LISTENERS
 // ==============================================================================
 function initEventListeners() {
+
   document.getElementById('brand-logo')?.addEventListener('click', () => {
     if (state.userMode === 'cliente') switchClientView('landing');
   });
@@ -1379,7 +1765,81 @@ function initEventListeners() {
   });
 
   document.getElementById('btn-submit-pos')?.addEventListener('click', submitPosOrder);
+
+  // Sub-pestañas TPV Mostrador (Nuevo Pedido / Cuentas Pendientes)
+  document.getElementById('btn-subtab-pos-nuevo')?.addEventListener('click', () => switchPosSubTab('nuevo'));
+  document.getElementById('btn-subtab-pos-pendientes')?.addEventListener('click', () => switchPosSubTab('pendientes'));
+
+  // Filtros de Cuentas Pendientes
+  document.querySelectorAll('.filter-cobros-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-cobros-btn').forEach(b => {
+        b.className = 'filter-cobros-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer whitespace-nowrap';
+      });
+      btn.className = 'filter-cobros-btn active px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900 border border-slate-900 dark:border-white transition-all cursor-pointer whitespace-nowrap';
+      state.cobrosFilter = btn.dataset.filter;
+      renderPendingBillsTable();
+    });
+  });
+
+  document.getElementById('btn-refresh-cobros')?.addEventListener('click', async () => {
+    await loadPedidosKDS();
+    renderPendingBillsTable();
+    showToast('🔄 Cuentas pendientes actualizadas', 'info');
+  });
+
+  // Modal de Cobro Presencial
+  document.getElementById('btn-close-cobro-modal')?.addEventListener('click', () => {
+    document.getElementById('modal-cobro').classList.add('hidden');
+  });
+
+  document.getElementById('btn-cancel-cobro')?.addEventListener('click', () => {
+    document.getElementById('modal-cobro').classList.add('hidden');
+  });
+
+  document.querySelectorAll('input[name="cobro-method"]').forEach(radio => {
+    radio.addEventListener('change', updateCobroMethodPanels);
+  });
+
+  document.getElementById('input-importe-entregado')?.addEventListener('input', updateCambioCalculator);
+
+  document.querySelectorAll('.btn-quick-cash').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cashVal = btn.dataset.cash;
+      const input = document.getElementById('input-importe-entregado');
+      if (!input || !state.cobroModalOrder) return;
+
+      if (cashVal === 'exact') {
+        input.value = parseFloat(state.cobroModalOrder.total).toFixed(2);
+      } else {
+        input.value = parseFloat(cashVal).toFixed(2);
+      }
+      updateCambioCalculator();
+    });
+  });
+
+  document.getElementById('btn-confirmar-cobro')?.addEventListener('click', confirmarCobroModal);
+
+  document.getElementById('btn-cobro-abrir-stripe')?.addEventListener('click', () => {
+    if (state.cobroModalOrder) {
+      iniciarStripeParaPedido(state.cobroModalOrder.id);
+    }
+  });
+
+  // Modal de Ticket Fiscal
+  document.getElementById('btn-close-ticket-modal')?.addEventListener('click', () => {
+    document.getElementById('modal-ticket').classList.add('hidden');
+  });
+
+  document.getElementById('btn-ticket-close')?.addEventListener('click', () => {
+    document.getElementById('modal-ticket').classList.add('hidden');
+  });
+
+  document.getElementById('btn-print-ticket')?.addEventListener('click', () => {
+    window.print();
+  });
 }
+
 
 async function submitPosOrder() {
   if (posItems.length === 0) return;
