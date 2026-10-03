@@ -438,3 +438,169 @@ export const registrarCobroPedido = async (req, res) => {
   }
 };
 
+/**
+ * Modificar comanda de pedido completo (líneas, comensales, mesa, tipo de entrega, observaciones, ajuste de precio)
+ */
+export const updatePedidoCompleto = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const {
+      tipo_pedido,
+      mesa_numero,
+      cliente_nombre,
+      cliente_telefono,
+      cliente_direccion,
+      observaciones,
+      estado,
+      lineas,
+      descuento,
+      total
+    } = req.body;
+
+    // Verificar si el pedido existe
+    const pedPrevRes = await client.query('SELECT * FROM pedidos WHERE id = $1', [id]);
+    if (pedPrevRes.rowCount === 0) {
+      client.release();
+      return res.status(404).json({ success: false, message: `Pedido #${id} no encontrado` });
+    }
+    const pedidoPrevio = pedPrevRes.rows[0];
+
+    await client.query('BEGIN');
+
+    // 1. Procesar líneas si se enviaron
+    let totalCalculado = 0;
+    const lineasProcesadas = [];
+
+    if (Array.isArray(lineas) && lineas.length > 0) {
+      // Eliminar líneas previas
+      await client.query('DELETE FROM lineas_pedido WHERE pedido_id = $1', [id]);
+
+      for (const item of lineas) {
+        const pzRes = await client.query('SELECT id, nombre, precio FROM pizzas WHERE id = $1', [item.pizza_id]);
+        if (pzRes.rowCount === 0) {
+          throw new Error(`La pizza con ID ${item.pizza_id} no existe.`);
+        }
+        const pz = pzRes.rows[0];
+        const cantidad = Math.max(1, parseInt(item.cantidad, 10) || 1);
+        const precioUnitario = item.precio_unitario !== undefined ? parseFloat(item.precio_unitario) : parseFloat(pz.precio);
+        const notas = item.notas || null;
+
+        totalCalculado += cantidad * precioUnitario;
+
+        const insertLineaRes = await client.query(
+          `INSERT INTO lineas_pedido (pedido_id, pizza_id, cantidad, precio_unitario, notas)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id, pedido_id, pizza_id, cantidad, precio_unitario, notas`,
+          [id, pz.id, cantidad, precioUnitario, notas]
+        );
+
+        lineasProcesadas.push({
+          ...insertLineaRes.rows[0],
+          nombre: pz.nombre,
+          subtotal: cantidad * precioUnitario
+        });
+      }
+    } else {
+      // Si no se pasaron líneas, mantener el total previo
+      totalCalculado = parseFloat(pedidoPrevio.total);
+    }
+
+    // Calcular total final con descuento o ajuste si aplica
+    let totalFinal = totalCalculado;
+    if (total !== undefined && !isNaN(parseFloat(total))) {
+      totalFinal = Math.max(0, parseFloat(total));
+    } else if (descuento !== undefined && !isNaN(parseFloat(descuento))) {
+      totalFinal = Math.max(0, totalCalculado - parseFloat(descuento));
+    }
+
+    // 2. Resolver campos de cabecera
+    const nuevoTipo = tipo_pedido || pedidoPrevio.tipo_pedido;
+    let nuevaMesa = pedidoPrevio.mesa_numero;
+    if (nuevoTipo === 'mesa') {
+      nuevaMesa = mesa_numero !== undefined ? (mesa_numero ? parseInt(mesa_numero, 10) : null) : pedidoPrevio.mesa_numero;
+    } else {
+      nuevaMesa = null; // Si es recoger o domicilio, no tiene mesa asignada
+    }
+
+    const nuevoNombre = cliente_nombre !== undefined ? cliente_nombre : pedidoPrevio.cliente_nombre;
+    const nuevoTelefono = cliente_telefono !== undefined ? cliente_telefono : pedidoPrevio.cliente_telefono;
+    const nuevaDireccion = cliente_direccion !== undefined ? cliente_direccion : pedidoPrevio.cliente_direccion;
+    const nuevasObs = observaciones !== undefined ? observaciones : pedidoPrevio.observaciones;
+    const nuevoEstado = estado || pedidoPrevio.estado;
+
+    const updateSql = `
+      UPDATE pedidos
+      SET tipo_pedido = $1,
+          mesa_numero = $2,
+          cliente_nombre = $3,
+          cliente_telefono = $4,
+          cliente_direccion = $5,
+          observaciones = $6,
+          estado = $7,
+          total = $8
+      WHERE id = $9
+      RETURNING *
+    `;
+
+    const updateRes = await client.query(updateSql, [
+      nuevoTipo,
+      nuevaMesa,
+      nuevoNombre,
+      nuevoTelefono,
+      nuevaDireccion,
+      nuevasObs,
+      nuevoEstado,
+      totalFinal,
+      id
+    ]);
+
+    const pedidoActualizado = updateRes.rows[0];
+
+    // 3. Gestionar estado de mesas si cambió
+    const mesaAnterior = pedidoPrevio.mesa_numero;
+    if (mesaAnterior && mesaAnterior !== nuevaMesa) {
+      const activasAnterior = await client.query(
+        `SELECT id FROM pedidos WHERE mesa_numero = $1 AND id != $2 AND estado IN ('pendiente', 'en_preparacion', 'listo')`,
+        [mesaAnterior, id]
+      );
+      if (activasAnterior.rowCount === 0) {
+        await client.query(`UPDATE mesas SET estado = 'libre' WHERE numero = $1`, [mesaAnterior]);
+      }
+    }
+
+    if (nuevaMesa) {
+      await client.query(`UPDATE mesas SET estado = 'ocupada' WHERE numero = $1`, [nuevaMesa]);
+    }
+
+    await client.query('COMMIT');
+
+    // Obtener líneas definitivas para la respuesta
+    const lineasFinalesRes = await pool.query(`
+      SELECT lp.id as linea_id, lp.pizza_id, pz.nombre, pz.imagen_url, lp.cantidad, lp.precio_unitario,
+             (lp.cantidad * lp.precio_unitario) as subtotal, lp.notas
+      FROM lineas_pedido lp
+      JOIN pizzas pz ON lp.pizza_id = pz.id
+      WHERE lp.pedido_id = $1
+    `, [id]);
+
+    res.json({
+      success: true,
+      message: `Comanda #${id} modificada y actualizada con éxito`,
+      data: {
+        ...pedidoActualizado,
+        lineas: lineasFinalesRes.rows
+      }
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(`Error al modificar pedido #${req.params.id}:`, error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Error al modificar el pedido',
+    });
+  } finally {
+    client.release();
+  }
+};
+

@@ -1025,6 +1025,9 @@ function renderKDSCard(p) {
 
       <div class="pt-1 space-y-1.5">
         ${actionButtons}
+        <button onclick="openEditarPedidoModal(${p.id})" class="w-full py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold text-xs border border-blue-500/20 transition-all cursor-pointer flex items-center justify-center gap-1.5" title="Ajustar o modificar comanda">
+          <span>✏️</span> <span>Ajustar / Modificar Pedido</span>
+        </button>
         ${(!p.estado_pago || p.estado_pago === 'pendiente') ? `
           <button onclick="openCobroModal(${p.id})" class="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5">
             <span>💶</span> <span>Cobrar (${parseFloat(p.total).toFixed(2)} €)</span>
@@ -1448,6 +1451,9 @@ function renderCobrosCrudTable() {
         </td>
         <td class="py-3 px-4 text-center">
           <div class="flex items-center justify-center gap-1.5">
+            <button onclick="openEditarPedidoModal(${p.id})" class="px-2.5 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold text-xs border border-blue-500/20 transition-all cursor-pointer flex items-center gap-1" title="Ajustar o modificar comanda">
+              <span>✏️</span> <span>Modificar</span>
+            </button>
             <button onclick="openTicketModal(${p.id})" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all cursor-pointer flex items-center gap-1" title="Ver e imprimir pre-ticket">
               <span>🧾</span> <span>Pre-Ticket</span>
             </button>
@@ -1666,6 +1672,9 @@ function renderHistoricoTable() {
         </td>
         <td class="py-3 px-4 text-center">
           <div class="flex items-center justify-center gap-1">
+            <button onclick="openEditarPedidoModal(${p.id})" class="px-2 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold text-xs border border-blue-500/20 transition-all cursor-pointer flex items-center gap-1" title="Ajustar o modificar comanda">
+              <span>✏️</span> <span>Modificar</span>
+            </button>
             <button onclick="openTicketModal(${p.id})" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all cursor-pointer flex items-center gap-1" title="Ver / Imprimir Ticket Fiscal">
               <span>🧾</span> <span>Ticket</span>
             </button>
@@ -1723,6 +1732,338 @@ ________________________________________
     alert(ticketContent);
   }
 }
+
+// ==============================================================================
+// GESTIÓN DE MODIFICACIÓN / AJUSTE DE COMANDA (CRUD DE PEDIDOS)
+// ==============================================================================
+window.openEditarPedidoModal = async function(orderId) {
+  let order = (state.pedidos || []).find(p => p.id === orderId);
+  if (!order || !order.lineas) {
+    try {
+      const res = await fetch(`${API_BASE}/pedidos/${orderId}`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        order = data.data;
+      }
+    } catch (err) {
+      console.error('Error al cargar pedido para edición:', err);
+    }
+  }
+
+  if (!order) {
+    showToast(`⚠️ No se encontró el pedido #${orderId}`, 'error');
+    return;
+  }
+
+  // Clonar en estado de edición
+  state.editingOrder = {
+    ...order,
+    lineas: Array.isArray(order.lineas) ? JSON.parse(JSON.stringify(order.lineas)) : []
+  };
+
+  const idEl = document.getElementById('edit-pedido-id');
+  if (idEl) idEl.textContent = order.id;
+  
+  // Set tipo
+  const tipoSelect = document.getElementById('edit-pedido-tipo');
+  if (tipoSelect) {
+    tipoSelect.value = order.tipo_pedido || 'mesa';
+    updateEditTipoVisibility(tipoSelect.value);
+  }
+
+  // Set mesa
+  const mesaSelect = document.getElementById('edit-pedido-mesa');
+  if (mesaSelect) {
+    mesaSelect.value = order.mesa_numero ? order.mesa_numero.toString() : '';
+  }
+
+  // Set estado
+  const estadoSelect = document.getElementById('edit-pedido-estado');
+  if (estadoSelect) {
+    estadoSelect.value = order.estado || 'pendiente';
+  }
+
+  // Set cliente info
+  const nombreInput = document.getElementById('edit-pedido-nombre');
+  if (nombreInput) nombreInput.value = order.cliente_nombre || '';
+
+  const telInput = document.getElementById('edit-pedido-telefono');
+  if (telInput) telInput.value = order.cliente_telefono || '';
+
+  const dirInput = document.getElementById('edit-pedido-direccion');
+  if (dirInput) dirInput.value = order.cliente_direccion || '';
+
+  const obsInput = document.getElementById('edit-pedido-observaciones');
+  if (obsInput) obsInput.value = order.observaciones || '';
+
+  // Descuento / Ajuste
+  const descInput = document.getElementById('edit-input-descuento');
+  if (descInput) {
+    const subtotal = (state.editingOrder.lineas || []).reduce((s, l) => s + (parseFloat(l.precio_unitario) || 0) * (parseInt(l.cantidad, 10) || 1), 0);
+    const orderTotal = parseFloat(order.total) || 0;
+    const diff = subtotal - orderTotal;
+    descInput.value = diff > 0.05 ? diff.toFixed(2) : '0.00';
+  }
+
+  // Rellenar selector de pizzas
+  populateEditPizzaSelect();
+
+  // Renderizar líneas
+  renderEditComandaLines();
+
+  // Mostrar modal
+  document.getElementById('modal-editar-pedido')?.classList.remove('hidden');
+};
+
+function updateEditTipoVisibility(tipo) {
+  const groupMesa = document.getElementById('edit-group-mesa');
+  const groupDir = document.getElementById('edit-group-direccion');
+  if (groupMesa) groupMesa.style.display = tipo === 'mesa' ? 'block' : 'none';
+  if (groupDir) groupDir.style.display = tipo === 'domicilio' ? 'block' : 'none';
+}
+
+function populateEditPizzaSelect() {
+  const select = document.getElementById('edit-select-pizza');
+  if (!select) return;
+
+  const pizzas = (state.pizzas && state.pizzas.length > 0) ? state.pizzas : [];
+  if (pizzas.length === 0) {
+    select.innerHTML = '<option value="">No hay pizzas cargadas</option>';
+    return;
+  }
+
+  select.innerHTML = pizzas.map(p => `
+    <option value="${p.id}">${p.nombre} (${parseFloat(p.precio).toFixed(2)} €)</option>
+  `).join('');
+}
+
+window.renderEditComandaLines = function() {
+  const container = document.getElementById('edit-pedido-lineas-list');
+  const countBadge = document.getElementById('edit-badge-items-count');
+  if (!container || !state.editingOrder) return;
+
+  const lineas = state.editingOrder.lineas || [];
+  const totalItems = lineas.reduce((s, l) => s + (parseInt(l.cantidad, 10) || 1), 0);
+  if (countBadge) countBadge.textContent = `${totalItems} pizza(s)`;
+
+  if (lineas.length === 0) {
+    container.innerHTML = `
+      <div class="text-center py-6 text-slate-400 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+        <span class="text-2xl block mb-1">🍕</span>
+        <span class="font-bold text-xs text-slate-600 dark:text-slate-300">La comanda no tiene pizzas</span>
+        <p class="text-[11px] text-slate-400">Selecciona una pizza arriba y pulsa "➕ Añadir"</p>
+      </div>
+    `;
+    recalcEditComanda();
+    return;
+  }
+
+  container.innerHTML = lineas.map((linea, index) => {
+    const subtotal = ((parseFloat(linea.precio_unitario) || 0) * (parseInt(linea.cantidad, 10) || 1)).toFixed(2);
+    return `
+      <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 flex-1 min-w-0">
+            <span class="text-lg">🍕</span>
+            <div class="truncate">
+              <strong class="font-bold text-slate-800 dark:text-slate-100 block text-xs truncate">${linea.nombre || 'Pizza'}</strong>
+              <span class="text-[11px] text-slate-400">${parseFloat(linea.precio_unitario).toFixed(2)} € / ud.</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-1.5 shrink-0">
+            <div class="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-slate-50 dark:bg-slate-800">
+              <button type="button" onclick="editPedidoChangeQty(${index}, -1)" class="w-7 h-7 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs cursor-pointer">-</button>
+              <span class="w-8 text-center text-xs font-black text-slate-900 dark:text-white">${linea.cantidad}</span>
+              <button type="button" onclick="editPedidoChangeQty(${index}, 1)" class="w-7 h-7 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs cursor-pointer">+</button>
+            </div>
+            
+            <strong class="w-16 text-right font-display font-black text-xs text-brand-500">${subtotal} €</strong>
+
+            <button type="button" onclick="editPedidoRemoveLine(${index})" class="w-7 h-7 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center text-xs cursor-pointer transition-all" title="Eliminar de comanda">
+              🗑️
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <input type="text" value="${linea.notas || ''}" onchange="editPedidoChangeNotes(${index}, this.value)" placeholder="Nota específica para esta pizza (ej: sin queso, al punto...)" class="w-full text-[11px] p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none">
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  recalcEditComanda();
+};
+
+window.editPedidoAddPizza = function() {
+  if (!state.editingOrder) return;
+  const select = document.getElementById('edit-select-pizza');
+  const cantInput = document.getElementById('edit-input-nueva-cant');
+  const pizzaId = parseInt(select?.value, 10);
+  const cantidad = Math.max(1, parseInt(cantInput?.value, 10) || 1);
+
+  if (!pizzaId) {
+    showToast('⚠️ Selecciona una pizza válida', 'warning');
+    return;
+  }
+
+  const pz = (state.pizzas || []).find(p => p.id === pizzaId);
+  if (!pz) {
+    showToast('⚠️ Pizza no encontrada en catálogo', 'error');
+    return;
+  }
+
+  if (!state.editingOrder.lineas) {
+    state.editingOrder.lineas = [];
+  }
+
+  const existing = state.editingOrder.lineas.find(l => l.pizza_id === pz.id && (!l.notas || l.notas.trim() === ''));
+  if (existing) {
+    existing.cantidad = (parseInt(existing.cantidad, 10) || 1) + cantidad;
+  } else {
+    state.editingOrder.lineas.push({
+      pizza_id: pz.id,
+      nombre: pz.nombre,
+      cantidad: cantidad,
+      precio_unitario: parseFloat(pz.precio),
+      notas: ''
+    });
+  }
+
+  if (cantInput) cantInput.value = 1;
+  renderEditComandaLines();
+  showToast(`➕ Añadida "${pz.nombre}" a la comanda`, 'success');
+};
+
+window.editPedidoChangeQty = function(index, delta) {
+  if (!state.editingOrder || !state.editingOrder.lineas) return;
+  const linea = state.editingOrder.lineas[index];
+  if (!linea) return;
+
+  const nuevaCant = (parseInt(linea.cantidad, 10) || 1) + delta;
+  if (nuevaCant <= 0) {
+    state.editingOrder.lineas.splice(index, 1);
+  } else {
+    linea.cantidad = nuevaCant;
+  }
+  renderEditComandaLines();
+};
+
+window.editPedidoRemoveLine = function(index) {
+  if (!state.editingOrder || !state.editingOrder.lineas) return;
+  state.editingOrder.lineas.splice(index, 1);
+  renderEditComandaLines();
+};
+
+window.editPedidoChangeNotes = function(index, notes) {
+  if (!state.editingOrder || !state.editingOrder.lineas) return;
+  const linea = state.editingOrder.lineas[index];
+  if (linea) {
+    linea.notas = notes;
+  }
+};
+
+window.recalcEditComanda = function() {
+  if (!state.editingOrder) return;
+  const lineas = state.editingOrder.lineas || [];
+  const subtotal = lineas.reduce((s, l) => s + (parseFloat(l.precio_unitario) || 0) * (parseInt(l.cantidad, 10) || 1), 0);
+  
+  const descInput = document.getElementById('edit-input-descuento');
+  const descuento = Math.max(0, parseFloat(descInput?.value) || 0);
+
+  const total = Math.max(0, subtotal - descuento);
+
+  const subtotalEl = document.getElementById('edit-calc-subtotal');
+  const totalEl = document.getElementById('edit-calc-total');
+
+  if (subtotalEl) subtotalEl.textContent = `${subtotal.toFixed(2)} €`;
+  if (totalEl) totalEl.textContent = `${total.toFixed(2)} €`;
+};
+
+window.guardarEdicionPedido = async function(andCobrar) {
+  if (!state.editingOrder) return;
+  const orderId = state.editingOrder.id;
+
+  const tipo = document.getElementById('edit-pedido-tipo')?.value || 'mesa';
+  const mesaVal = document.getElementById('edit-pedido-mesa')?.value;
+  const estado = document.getElementById('edit-pedido-estado')?.value || 'pendiente';
+  const nombre = (document.getElementById('edit-pedido-nombre')?.value || '').trim();
+  const telefono = (document.getElementById('edit-pedido-telefono')?.value || '').trim();
+  const direccion = (document.getElementById('edit-pedido-direccion')?.value || '').trim();
+  const observaciones = (document.getElementById('edit-pedido-observaciones')?.value || '').trim();
+  const descuento = Math.max(0, parseFloat(document.getElementById('edit-input-descuento')?.value) || 0);
+
+  const lineas = state.editingOrder.lineas || [];
+  if (lineas.length === 0) {
+    showToast('⚠️ La comanda debe tener al menos una pizza', 'warning');
+    return;
+  }
+
+  if (tipo === 'recoger' && (!nombre || !telefono)) {
+    showToast('⚠️ Para pedidos a recoger se requiere nombre y teléfono', 'warning');
+    return;
+  }
+
+  if (tipo === 'domicilio' && (!nombre || !telefono || !direccion)) {
+    showToast('⚠️ Para pedidos a domicilio se requiere nombre, teléfono y dirección', 'warning');
+    return;
+  }
+
+  const subtotal = lineas.reduce((s, l) => s + (parseFloat(l.precio_unitario) || 0) * (parseInt(l.cantidad, 10) || 1), 0);
+  const totalFinal = Math.max(0, subtotal - descuento);
+
+  const payload = {
+    tipo_pedido: tipo,
+    mesa_numero: tipo === 'mesa' ? (parseInt(mesaVal, 10) || null) : null,
+    estado: estado,
+    cliente_nombre: nombre || (tipo === 'mesa' ? `Cliente Mesa ${mesaVal || '--'}` : 'Cliente Mostrador'),
+    cliente_telefono: telefono || null,
+    cliente_direccion: direccion || null,
+    observaciones: observaciones || null,
+    descuento: descuento,
+    total: totalFinal,
+    lineas: lineas.map(l => ({
+      pizza_id: l.pizza_id,
+      cantidad: parseInt(l.cantidad, 10) || 1,
+      precio_unitario: parseFloat(l.precio_unitario),
+      notas: l.notas || null
+    }))
+  };
+
+  try {
+    showToast(`⏳ Guardando cambios en comanda #${orderId}...`, 'info');
+    const res = await fetch(`${API_BASE}/pedidos/${orderId}/comanda`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Error al guardar la comanda');
+    }
+
+    showToast(`✅ Comanda #${orderId} actualizada correctamente`, 'success');
+    document.getElementById('modal-editar-pedido')?.classList.add('hidden');
+
+    // Recargar datos en cocina, mostrador y cobros
+    await loadPedidosKDS();
+    if (typeof loadMesas === 'function') {
+      await loadMesas();
+    }
+
+    // Si pulsó "Guardar & Cobrar", abrir inmediatamente el modal de cobro
+    if (andCobrar) {
+      setTimeout(() => {
+        openCobroModal(orderId);
+      }, 200);
+    }
+  } catch (err) {
+    console.error('Error al guardar pedido editado:', err);
+    showToast(`❌ ${err.message}`, 'error');
+  }
+};
 
 window.openCobroModal = async function(orderId) {
   let order = (state.pedidos || []).find(p => p.id === orderId);
@@ -2238,6 +2579,19 @@ function initEventListeners() {
 
   document.getElementById('historico-search-input')?.addEventListener('input', () => {
     renderHistoricoTable();
+  });
+
+  // Modal de Modificación / Ajuste de Comanda
+  document.getElementById('btn-close-edit-pedido-modal')?.addEventListener('click', () => {
+    document.getElementById('modal-editar-pedido')?.classList.add('hidden');
+  });
+
+  document.getElementById('btn-cancel-edit-pedido')?.addEventListener('click', () => {
+    document.getElementById('modal-editar-pedido')?.classList.add('hidden');
+  });
+
+  document.getElementById('edit-pedido-tipo')?.addEventListener('change', (e) => {
+    updateEditTipoVisibility(e.target.value);
   });
 
   // Modal de Cobro Presencial

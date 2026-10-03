@@ -1235,10 +1235,169 @@
         </a>
       </div>
     </div>
+  <!-- ==================== MODAL DE MODIFICACIÓN / AJUSTE DE COMANDA ==================== -->
+  <div id="modal-editar-pedido" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-4 relative my-auto max-h-[92vh] flex flex-col">
+      
+      <button id="btn-close-edit-pedido-modal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white text-2xl cursor-pointer">&times;</button>
+      
+      <!-- ENCABEZADO -->
+      <div class="flex items-center gap-3 shrink-0">
+        <div class="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center text-2xl shrink-0">
+          ✏️
+        </div>
+        <div>
+          <h3 class="font-display font-black text-xl sm:text-2xl text-slate-900 dark:text-white leading-tight">
+            Modificar Comanda #<span id="edit-pedido-id">--</span>
+          </h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Ajuste de comensales, cambio de mesa, añadir/quitar pizzas o aplicar descuentos</p>
+        </div>
+      </div>
+
+      <!-- CONTENIDO SCROLLABLE -->
+      <div class="overflow-y-auto flex-1 space-y-4 pr-1 text-xs">
+        
+        <!-- DATOS GENERALES (TIPO, MESA, ESTADO) -->
+        <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1 text-[10px]">Tipo de Pedido</label>
+            <select id="edit-pedido-tipo" class="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none">
+              <option value="mesa">🍽️ Mesa en Local</option>
+              <option value="recoger">🥡 Para Recoger</option>
+              <option value="domicilio">🛵 Domicilio</option>
+            </select>
+          </div>
+
+          <div id="edit-group-mesa">
+            <label class="block font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1 text-[10px]">Mesa Asignada</label>
+            <select id="edit-pedido-mesa" class="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none">
+              <option value="">-- Sin mesa --</option>
+              <option value="1">Mesa 1</option>
+              <option value="2">Mesa 2</option>
+              <option value="3">Mesa 3</option>
+              <option value="4">Mesa 4</option>
+              <option value="5">Mesa 5</option>
+              <option value="6">Mesa 6</option>
+              <option value="7">Mesa 7</option>
+              <option value="8">Mesa 8</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1 text-[10px]">Estado en Cocina</label>
+            <select id="edit-pedido-estado" class="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none">
+              <option value="pendiente">⏳ Pendiente</option>
+              <option value="en_preparacion">🔥 En Horno</option>
+              <option value="listo">✅ Listo</option>
+              <option value="servido">🍽️ Servido</option>
+              <option value="en_reparto">🛵 En Reparto</option>
+              <option value="entregado">📦 Entregado</option>
+              <option value="cancelado">❌ Cancelado</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- DATOS DEL CLIENTE -->
+        <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2.5">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1 text-[10px]">Nombre Cliente / Comensal</label>
+              <input type="text" id="edit-pedido-nombre" placeholder="Ej: Juan Pérez o Mesa 2" class="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1 text-[10px]">Teléfono Contacto</label>
+              <input type="text" id="edit-pedido-telefono" placeholder="Ej: 600 123 456" class="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none">
+            </div>
+          </div>
+
+          <div id="edit-group-direccion">
+            <label class="block font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1 text-[10px]">Dirección de Entrega (Domicilio)</label>
+            <input type="text" id="edit-pedido-direccion" placeholder="Calle, número, piso, puerta, código postal..." class="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1 text-[10px]">Observaciones / Alergias / Notas</label>
+            <input type="text" id="edit-pedido-observaciones" placeholder="Ej: Sin cebolla, pizza bien crujiente, alérgica al marisco..." class="w-full p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-medium text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- SECCIÓN: LÍNEAS DE COMANDA (AÑADIR / MODIFICAR PIZZAS) -->
+        <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+              <span>🍕</span> <span>Artículos de la Comanda</span>
+              <span id="edit-badge-items-count" class="px-2 py-0.5 rounded-full text-[10px] bg-blue-500/10 text-blue-500 font-bold border border-blue-500/20">0 items</span>
+            </label>
+          </div>
+
+          <!-- AÑADIR NUEVA PIZZA A LA COMANDA -->
+          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
+            <select id="edit-select-pizza" class="flex-1 p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 border-0 focus:ring-1 focus:ring-blue-500 focus:outline-none">
+              <!-- Opciones dinámicas de pizzas disponibles -->
+            </select>
+            <div class="flex items-center gap-1">
+              <span class="text-slate-400 text-[11px]">Cant:</span>
+              <input type="number" id="edit-input-nueva-cant" min="1" max="20" value="1" class="w-14 p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 text-xs font-bold text-center border-0 text-slate-800 dark:text-white">
+            </div>
+            <button type="button" onclick="editPedidoAddPizza()" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer transition-all flex items-center gap-1 shrink-0">
+              <span>➕</span> <span>Añadir</span>
+            </button>
+          </div>
+
+          <!-- LISTADO DE LÍNEAS ACTIVAS -->
+          <div id="edit-pedido-lineas-list" class="space-y-2 max-h-52 overflow-y-auto pr-1">
+            <!-- Renderizado dinámico de filas de comanda -->
+          </div>
+        </div>
+
+        <!-- RESUMEN DE PRECIO Y DESCUENTO / AJUSTE ESPECIAL -->
+        <div class="p-4 rounded-2xl bg-blue-50/50 dark:bg-slate-800/80 border border-blue-200/60 dark:border-slate-700 space-y-2">
+          <div class="flex items-center justify-between text-slate-600 dark:text-slate-400">
+            <span class="font-medium">Subtotal de pizzas:</span>
+            <span id="edit-calc-subtotal" class="font-bold text-slate-800 dark:text-slate-200">0.00 €</span>
+          </div>
+
+          <div class="flex items-center justify-between text-slate-600 dark:text-slate-400">
+            <div class="flex items-center gap-1.5">
+              <span class="font-medium">Descuento / Ajuste especial:</span>
+              <span class="text-[10px] text-slate-400">(oferta, cortesía, fallo comanda)</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <span class="text-slate-400 font-bold">-</span>
+              <input type="number" id="edit-input-descuento" min="0" step="0.50" value="0.00" oninput="recalcEditComanda()" class="w-20 p-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-right font-bold text-brand-500 text-xs focus:outline-none">
+              <span class="font-bold text-slate-500">€</span>
+            </div>
+          </div>
+
+          <div class="border-t border-blue-200/60 dark:border-slate-700 pt-2 flex items-center justify-between">
+            <strong class="font-display text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">Total Definitivo a Cobrar:</strong>
+            <strong id="edit-calc-total" class="font-display text-2xl font-black text-brand-500">0.00 €</strong>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- BOTONES DE ACCIÓN FOOTER -->
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200 dark:border-slate-800 shrink-0">
+        <button type="button" id="btn-cancel-edit-pedido" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition-all">
+          Cancelar
+        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-save-edit-pedido" onclick="guardarEdicionPedido(false)" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs cursor-pointer shadow-sm transition-all flex items-center gap-1.5">
+            <span>💾</span> <span>Guardar Cambios</span>
+          </button>
+          <button type="button" id="btn-save-and-cobrar-edit-pedido" onclick="guardarEdicionPedido(true)" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-md cursor-pointer transition-all flex items-center gap-1.5">
+            <span>💶</span> <span>Guardar & Cobrar</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
   </div>
 
   <!-- ==================== MODAL DE COBRO EN CAJA / TPV ==================== -->
   <div id="modal-cobro" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
+
     <div class="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 relative">
       
       <button id="btn-close-cobro-modal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white text-2xl cursor-pointer">&times;</button>
@@ -1476,7 +1635,7 @@
   <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
 
-  <script src="main.js?v=2.5.0"></script>
+  <script src="main.js?v=2.6.0"></script>
 </body>
 </html>
 
