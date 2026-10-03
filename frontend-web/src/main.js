@@ -195,47 +195,79 @@ async function checkApiHealth() {
 function switchClientView(viewName) {
   state.currentClientView = viewName;
   
-  // Ocultar todas las vistas de cliente
+  // Ocultar vistas de cliente y el contenedor personal
   document.querySelectorAll('.client-view').forEach(v => v.classList.add('hidden'));
   document.getElementById(`view-${viewName}`)?.classList.remove('hidden');
+  document.getElementById('view-personal-container')?.classList.add('hidden');
+
+  // Si el usuario es empleado pero está visitando la web pública, mostrar banner en tracking
+  const returnBanner = document.getElementById('tracking-staff-return-banner');
+  if (returnBanner) {
+    returnBanner.classList.toggle('hidden', state.userMode === 'cliente');
+  }
 
   // Actualizar botones de navegación cliente
   document.querySelectorAll('#nav-cliente .nav-tab').forEach(tab => {
     const isActive = tab.dataset.view === viewName;
     if (isActive) {
-      tab.className = 'nav-tab active px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-500 shadow-sm flex items-center gap-2 transition-all';
+      tab.className = 'nav-tab active px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-brand-500 shadow-sm flex items-center gap-1.5 transition-all';
     } else {
-      tab.className = 'nav-tab px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700/50 flex items-center gap-2 transition-all';
+      tab.className = 'nav-tab px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700/50 flex items-center gap-1.5 transition-all';
     }
   });
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  if (viewName === 'tracking' && state.activeTrackingId) {
-    fetchTrackingData(state.activeTrackingId);
+  if (viewName === 'tracking') {
+    if (state.activeTrackingId) {
+      fetchTrackingData(state.activeTrackingId);
+    }
   }
+}
+
+function returnToStaffPanel(targetTab = 'cocina') {
+  if (state.userMode === 'cliente') {
+    openStaffModal();
+    return;
+  }
+  document.querySelectorAll('.client-view').forEach(v => v.classList.add('hidden'));
+  document.getElementById('view-personal-container')?.classList.remove('hidden');
+  
+  const navCliente = document.getElementById('nav-cliente');
+  const navPersonal = document.getElementById('nav-personal');
+  if (navCliente) navCliente.className = 'hidden items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700/60';
+  if (navPersonal) navPersonal.className = 'hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700/60';
+
+  switchPersonalTab(targetTab);
 }
 
 function switchPersonalTab(tabName) {
   state.activePersonalTab = tabName;
 
-  // Actualizar tabs
+  // Asegurar que el contenedor de personal está visible y vistas cliente ocultas
+  document.querySelectorAll('.client-view').forEach(v => v.classList.add('hidden'));
+  document.getElementById('view-personal-container')?.classList.remove('hidden');
+
+  // Actualizar tabs en nav-personal
   document.querySelectorAll('#nav-personal .nav-tab').forEach(tab => {
     const isActive = tab.dataset.tab === tabName;
     if (isActive) {
-      tab.className = `nav-tab active px-4 py-2 rounded-lg text-sm font-semibold text-white bg-brand-500 shadow-sm flex items-center gap-2 transition-all ${tab.classList.contains('admin-only') && state.userMode !== 'admin' ? 'hidden' : ''}`;
+      tab.className = `nav-tab active px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-brand-500 shadow-sm flex items-center gap-1.5 transition-all ${tab.classList.contains('admin-only') && state.userMode !== 'admin' ? 'hidden' : ''}`;
     } else {
-      tab.className = `nav-tab px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700/50 flex items-center gap-2 transition-all ${tab.classList.contains('admin-only') && state.userMode !== 'admin' ? 'hidden' : ''}`;
+      tab.className = `nav-tab px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700/50 flex items-center gap-1.5 transition-all ${tab.classList.contains('admin-only') && state.userMode !== 'admin' ? 'hidden' : ''}`;
     }
   });
 
-  // Mostrar sección
+  // Mostrar sección activa
   document.querySelectorAll('#view-personal-container .tab-content').forEach(section => {
     section.classList.toggle('hidden', section.id !== `tab-${tabName}`);
   });
 
   if (tabName === 'cocina') {
     loadPedidosKDS();
+  } else if (tabName === 'cobros') {
+    loadPedidosKDS();
+    renderCobrosCrudTable();
   } else if (tabName === 'carta') {
     renderAdminPizzas();
   } else if (tabName === 'mesas') {
@@ -243,7 +275,6 @@ function switchPersonalTab(tabName) {
   } else if (tabName === 'mostrador') {
     renderPosCatalog();
     loadPedidosKDS();
-    renderPendingBillsTable();
   }
 }
 
@@ -856,6 +887,7 @@ async function loadPedidosKDS() {
       state.pedidos = data.data;
       renderKDSBoard();
       renderPendingBillsTable();
+      renderCobrosCrudTable();
     }
   } catch (err) {
     console.error('Error al cargar comandas KDS:', err);
@@ -1011,7 +1043,7 @@ window.updateOrderStatus = async function(orderId, newStatus) {
 function startKdsPolling() {
   if (state.kdsInterval) clearInterval(state.kdsInterval);
   state.kdsInterval = setInterval(() => {
-    if (state.userMode !== 'cliente' && state.activePersonalTab === 'cocina') {
+    if (state.userMode !== 'cliente' && (state.activePersonalTab === 'cocina' || state.activePersonalTab === 'cobros')) {
       loadPedidosKDS();
     }
   }, 5000);
@@ -1237,114 +1269,179 @@ function renderPosTicket() {
 }
 
 // ==============================================================================
-// GESTIÓN DE COBROS, CUENTAS PENDIENTES & TICKET FISCAL
+// GESTIÓN DE CAJA & COBROS (PANTALLA CRUD PROFESIONAL)
 // ==============================================================================
-function switchPosSubTab(subTabName) {
-  state.posSubTab = subTabName;
-  const btnNuevo = document.getElementById('btn-subtab-pos-nuevo');
-  const btnPendientes = document.getElementById('btn-subtab-pos-pendientes');
-  const viewNuevo = document.getElementById('subtab-view-pos-nuevo');
-  const viewPendientes = document.getElementById('subtab-view-pos-pendientes');
-
-  if (subTabName === 'nuevo') {
-    btnNuevo.className = 'subtab-pos-btn active px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-500 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1.5';
-    btnPendientes.className = 'subtab-pos-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer flex items-center gap-1.5';
-    viewNuevo?.classList.remove('hidden');
-    viewPendientes?.classList.add('hidden');
-  } else {
-    btnPendientes.className = 'subtab-pos-btn active px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-500 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1.5';
-    btnNuevo.className = 'subtab-pos-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer flex items-center gap-1.5';
-    viewPendientes?.classList.remove('hidden');
-    viewNuevo?.classList.add('hidden');
-    renderPendingBillsTable();
-  }
-}
-
-function renderPendingBillsTable() {
-  const container = document.getElementById('grid-cuentas-pendientes');
-  const badgeCount = document.getElementById('badge-pos-pendientes-count');
-  if (!container) return;
+function renderCobrosCrudTable() {
+  const tbody = document.getElementById('crud-cobros-table-body');
+  if (!tbody) return;
 
   const todasPendientes = (state.pedidos || []).filter(p => !p.estado_pago || p.estado_pago === 'pendiente');
-  if (badgeCount) badgeCount.textContent = todasPendientes.length;
 
+  // Cálculos de KPIs
+  const totalEur = todasPendientes.reduce((sum, p) => sum + (parseFloat(p.total) || 0), 0);
+  const countMesas = todasPendientes.filter(p => p.tipo_pedido === 'mesa').length;
+  const countDomicilio = todasPendientes.filter(p => p.tipo_pedido === 'domicilio').length;
+  const countRecoger = todasPendientes.filter(p => p.tipo_pedido === 'recoger').length;
+  const countDelivery = countDomicilio + countRecoger;
 
+  // Actualizar indicadores KPI
+  const kpiTotalEl = document.getElementById('kpi-cobros-total-eur');
+  const kpiCountEl = document.getElementById('kpi-cobros-count');
+  const kpiMesasEl = document.getElementById('kpi-cobros-mesas');
+  const kpiDeliveryEl = document.getElementById('kpi-cobros-delivery');
+
+  if (kpiTotalEl) kpiTotalEl.textContent = `${totalEur.toFixed(2)} €`;
+  if (kpiCountEl) kpiCountEl.textContent = todasPendientes.length;
+  if (kpiMesasEl) kpiMesasEl.textContent = countMesas;
+  if (kpiDeliveryEl) kpiDeliveryEl.textContent = countDelivery;
+
+  // Actualizar contadores de píldoras de filtro
+  const countTodasEl = document.getElementById('count-tab-todas');
+  const countMesasEl = document.getElementById('count-tab-mesas');
+  const countDomEl = document.getElementById('count-tab-domicilio');
+  const countRecEl = document.getElementById('count-tab-recoger');
+  const badgeNavCobros = document.getElementById('badge-nav-cobros-count');
+
+  if (countTodasEl) countTodasEl.textContent = todasPendientes.length;
+  if (countMesasEl) countMesasEl.textContent = countMesas;
+  if (countDomEl) countDomEl.textContent = countDomicilio;
+  if (countRecEl) countRecEl.textContent = countRecoger;
+  if (badgeNavCobros) badgeNavCobros.textContent = todasPendientes.length;
+
+  // Filtrado por canal
   let filtradas = todasPendientes;
-  if (state.cobrosFilter !== 'all') {
+  if (state.cobrosFilter && state.cobrosFilter !== 'all') {
     filtradas = filtradas.filter(p => p.tipo_pedido === state.cobrosFilter);
   }
 
+  // Filtrado por búsqueda en tiempo real
+  const searchInput = document.getElementById('input-search-crud-cobros');
+  const searchVal = (searchInput?.value || '').trim().toLowerCase();
+  if (searchVal) {
+    filtradas = filtradas.filter(p => {
+      const matchId = p.id.toString().includes(searchVal);
+      const matchCliente = (p.cliente_nombre || '').toLowerCase().includes(searchVal);
+      const matchTel = (p.cliente_telefono || '').includes(searchVal);
+      const matchMesa = p.mesa_numero ? p.mesa_numero.toString().includes(searchVal) : false;
+      const matchDir = (p.cliente_direccion || '').toLowerCase().includes(searchVal);
+      return matchId || matchCliente || matchTel || matchMesa || matchDir;
+    });
+  }
+
+  // Si no hay comandas para el filtro actual
   if (filtradas.length === 0) {
-    container.innerHTML = `
-      <div class="col-span-full text-center py-12 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-3">
-        <span class="text-4xl block">🎉</span>
-        <h4 class="font-display font-bold text-lg text-slate-800 dark:text-slate-200">¡Todas las cuentas al día!</h4>
-        <p class="text-xs text-slate-500 max-w-sm mx-auto">No hay comandas pendientes de cobro ${state.cobrosFilter !== 'all' ? `en modalidad "${state.cobrosFilter}"` : 'en este momento'}.</p>
-      </div>
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" class="text-center py-12 text-slate-400">
+          <span class="text-3xl block mb-2">🎉</span>
+          <span class="font-bold text-sm text-slate-700 dark:text-slate-300 block">No hay cuentas pendientes</span>
+          <p class="text-xs text-slate-400 mt-1">Todas las comandas para este filtro están cobradas o no coinciden con la búsqueda.</p>
+        </td>
+      </tr>
     `;
     return;
   }
 
-  container.innerHTML = filtradas.map(p => {
-    let badgeColor = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
-    let badgeText = `🍽️ Mesa ${p.mesa_numero || '--'}`;
+  // Ordenar: primero las que están listas/servidas/entregadas (listas para cobrar), luego por fecha reciente
+  filtradas.sort((a, b) => {
+    const listos = ['listo', 'servido', 'entregado'];
+    const aListo = listos.includes(a.estado) ? 1 : 0;
+    const bListo = listos.includes(b.estado) ? 1 : 0;
+    if (aListo !== bListo) return bListo - aListo;
+    return new Date(b.fecha) - new Date(a.fecha);
+  });
 
-    if (p.tipo_pedido === 'domicilio') {
-      badgeColor = 'bg-brand-500/10 text-brand-500 border-brand-500/30';
-      badgeText = `🛵 Domicilio`;
-    } else if (p.tipo_pedido === 'recoger') {
-      badgeColor = 'bg-amber-500/10 text-amber-500 border-amber-500/30';
-      badgeText = `🥡 Recoger`;
+  tbody.innerHTML = filtradas.map(p => {
+    // Badge Canal / Mesa
+    let canalBadge = '';
+    if (p.tipo_pedido === 'mesa') {
+      canalBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 whitespace-nowrap">🍽️ Mesa ${p.mesa_numero || '--'}</span>`;
+    } else if (p.tipo_pedido === 'domicilio') {
+      canalBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-brand-500/10 text-brand-500 border border-brand-500/20 whitespace-nowrap">🛵 Domicilio</span>`;
+    } else {
+      canalBadge = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 whitespace-nowrap">🥡 Recoger</span>`;
     }
 
-    const lineasHtml = (p.lineas || []).map(l => `
-      <div class="flex justify-between items-center text-xs py-0.5">
-        <span class="truncate">${l.cantidad}x ${l.nombre}</span>
-        <strong class="text-slate-800 dark:text-slate-200">${(parseFloat(l.precio_unitario || (l.subtotal / l.cantidad) || 0) * l.cantidad).toFixed(2)} €</strong>
-      </div>
-    `).join('') || '<span class="text-xs text-slate-400">Sin desglose de líneas</span>';
+    // Badge Estado Cocina
+    let estadoCocinaBadge = '';
+    switch (p.estado) {
+      case 'pendiente':
+        estadoCocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 whitespace-nowrap">⏳ Recibido</span>`;
+        break;
+      case 'en_preparacion':
+        estadoCocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 whitespace-nowrap">🔥 En Horno</span>`;
+        break;
+      case 'en_reparto':
+        estadoCocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-500/10 text-purple-500 border border-purple-500/20 whitespace-nowrap">🛵 En Reparto</span>`;
+        break;
+      case 'listo':
+      case 'servido':
+        estadoCocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 whitespace-nowrap">✅ Servido / Listo</span>`;
+        break;
+      case 'entregado':
+        estadoCocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-500/10 text-slate-500 border border-slate-500/20 whitespace-nowrap">📦 Entregado</span>`;
+        break;
+      default:
+        estadoCocinaBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300 uppercase">${p.estado}</span>`;
+    }
+
+    // Forma de pago prevista
+    let metodoPagoStr = '💵 En Efectivo';
+    if (p.metodo_pago === 'tarjeta_entrega' || p.metodo_pago === 'tarjeta_recogida') {
+      metodoPagoStr = '💳 Datáfono';
+    } else if (p.metodo_pago === 'stripe') {
+      metodoPagoStr = '💳 Stripe Online';
+    } else if (p.metodo_pago === 'pago_mesa') {
+      metodoPagoStr = '🍽️ En Mesa';
+    }
+
+    // Resumen de productos
+    const itemsSummary = (p.lineas && p.lineas.length > 0)
+      ? p.lineas.map(l => `${l.cantidad}x ${l.nombre}`).join(', ')
+      : (p.observaciones || 'Comanda registrada');
 
     return `
-      <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4 hover:border-amber-500/50 transition-all">
-        <div class="space-y-3">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${badgeColor} uppercase">${badgeText}</span>
-              <strong class="font-bold text-sm">#${p.id}</strong>
-            </div>
-            <span class="text-[11px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">⏳ Pendiente</span>
-          </div>
-
-          <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs">
-            <strong class="block text-slate-900 dark:text-white text-sm">${p.cliente_nombre || 'Cliente'}</strong>
-            ${p.cliente_telefono ? `<span class="text-slate-500 block">📞 Tel: ${p.cliente_telefono}</span>` : ''}
-            ${p.cliente_direccion ? `<span class="text-blue-500 dark:text-blue-400 block font-medium mt-0.5 truncate">📍 ${p.cliente_direccion}</span>` : ''}
-            <span class="text-slate-400 text-[11px] block mt-1">Hora: ${formatTime(p.fecha)} • Estado: <strong class="text-slate-700 dark:text-slate-300 uppercase">${p.estado}</strong></span>
-          </div>
-
-          <div class="space-y-1 text-slate-600 dark:text-slate-400 max-h-24 overflow-y-auto pr-1">
-            ${lineasHtml}
-          </div>
-        </div>
-
-        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-500 uppercase">Total a Cobrar:</span>
-            <strong class="font-display font-black text-2xl text-brand-500">${parseFloat(p.total).toFixed(2)} €</strong>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <button onclick="openTicketModal(${p.id})" class="py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1">
+      <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+        <td class="py-3 px-4">
+          <strong class="font-black text-sm text-slate-900 dark:text-white block">#${p.id}</strong>
+          <span class="text-[10px] text-slate-400 block">${formatTime(p.fecha)}</span>
+        </td>
+        <td class="py-3 px-4">
+          ${canalBadge}
+        </td>
+        <td class="py-3 px-4">
+          <strong class="font-bold text-slate-800 dark:text-slate-200 block truncate max-w-[140px]">${p.cliente_nombre || 'Cliente'}</strong>
+          <span class="text-[11px] text-slate-400 block truncate max-w-[140px]">${p.cliente_telefono || (p.cliente_direccion || 'Presencial')}</span>
+        </td>
+        <td class="py-3 px-4">
+          ${estadoCocinaBadge}
+        </td>
+        <td class="py-3 px-4">
+          <span class="text-[11px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 inline-block mb-0.5">⏳ Pendiente</span>
+          <span class="text-[10px] text-slate-400 block">${metodoPagoStr}</span>
+        </td>
+        <td class="py-3 px-4 max-w-[200px]">
+          <span class="text-xs text-slate-600 dark:text-slate-300 block truncate" title="${itemsSummary}">${itemsSummary}</span>
+        </td>
+        <td class="py-3 px-4 text-right">
+          <strong class="font-display font-black text-base text-brand-500 block">${parseFloat(p.total).toFixed(2)} €</strong>
+        </td>
+        <td class="py-3 px-4 text-center">
+          <div class="flex items-center justify-center gap-1.5">
+            <button onclick="openTicketModal(${p.id})" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all cursor-pointer flex items-center gap-1" title="Ver e imprimir pre-ticket">
               <span>🧾</span> <span>Pre-Ticket</span>
             </button>
-            <button onclick="openCobroModal(${p.id})" class="py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1">
+            <button onclick="openCobroModal(${p.id})" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1" title="Registrar Cobro">
               <span>💶</span> <span>Cobrar</span>
             </button>
           </div>
-        </div>
-      </div>
+        </td>
+      </tr>
     `;
   }).join('');
 }
+
+const renderPendingBillsTable = renderCobrosCrudTable;
 
 window.openCobroModal = async function(orderId) {
   let order = (state.pedidos || []).find(p => p.id === orderId);
@@ -1768,26 +1865,58 @@ function initEventListeners() {
 
   document.getElementById('btn-submit-pos')?.addEventListener('click', submitPosOrder);
 
-  // Sub-pestañas TPV Mostrador (Nuevo Pedido / Cuentas Pendientes)
-  document.getElementById('btn-subtab-pos-nuevo')?.addEventListener('click', () => switchPosSubTab('nuevo'));
-  document.getElementById('btn-subtab-pos-pendientes')?.addEventListener('click', () => switchPosSubTab('pendientes'));
+  // Botones de cambio rápido de pantalla para el empleado
+  document.getElementById('bar-btn-cocina')?.addEventListener('click', () => returnToStaffPanel('cocina'));
+  document.getElementById('bar-btn-cobros')?.addEventListener('click', () => returnToStaffPanel('cobros'));
+  document.getElementById('bar-btn-web-cliente')?.addEventListener('click', () => {
+    switchClientView('menu');
+    showToast('👁️ Viendo la carta como cliente (tu turno de personal sigue activo)', 'info');
+  });
 
-  // Filtros de Cuentas Pendientes
-  document.querySelectorAll('.filter-cobros-btn').forEach(btn => {
+  // Retorno a personal desde la pantalla de seguimiento de cliente
+  document.getElementById('btn-tracking-to-staff')?.addEventListener('click', () => returnToStaffPanel('cocina'));
+
+  // Búsqueda de cualquier comanda en pantalla de seguimiento
+  const handleSearchTracking = () => {
+    const input = document.getElementById('input-search-tracking-id');
+    const id = input?.value.trim();
+    if (id) {
+      state.activeTrackingId = id;
+      localStorage.setItem('last_pedido_id', id);
+      document.getElementById('badge-tracking')?.classList.remove('hidden');
+      fetchTrackingData(id);
+      showToast(`🔎 Consultando pedido #${id}`, 'info');
+    }
+  };
+  document.getElementById('btn-search-tracking-id')?.addEventListener('click', handleSearchTracking);
+  document.getElementById('input-search-tracking-id')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleSearchTracking();
+  });
+
+  // Pantalla CRUD Caja & Cobros
+  document.getElementById('btn-goto-nueva-comanda')?.addEventListener('click', () => switchPersonalTab('mostrador'));
+
+  document.getElementById('btn-refresh-crud-cobros')?.addEventListener('click', async () => {
+    await loadPedidosKDS();
+    renderCobrosCrudTable();
+    showToast('🔄 Cuentas por cobrar actualizadas', 'info');
+  });
+
+  // Filtros de Canal en CRUD Cobros
+  document.querySelectorAll('.pill-cobro-filter').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-cobros-btn').forEach(b => {
-        b.className = 'filter-cobros-btn px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer whitespace-nowrap';
+      document.querySelectorAll('.pill-cobro-filter').forEach(b => {
+        b.className = 'pill-cobro-filter px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-slate-400 transition-all cursor-pointer whitespace-nowrap';
       });
-      btn.className = 'filter-cobros-btn active px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900 border border-slate-900 dark:border-white transition-all cursor-pointer whitespace-nowrap';
+      btn.className = 'pill-cobro-filter active px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900 border border-slate-900 dark:border-white transition-all cursor-pointer whitespace-nowrap';
       state.cobrosFilter = btn.dataset.filter;
-      renderPendingBillsTable();
+      renderCobrosCrudTable();
     });
   });
 
-  document.getElementById('btn-refresh-cobros')?.addEventListener('click', async () => {
-    await loadPedidosKDS();
-    renderPendingBillsTable();
-    showToast('🔄 Cuentas pendientes actualizadas', 'info');
+  // Buscador en tiempo real en CRUD Cobros
+  document.getElementById('input-search-crud-cobros')?.addEventListener('input', () => {
+    renderCobrosCrudTable();
   });
 
   // Modal de Cobro Presencial
