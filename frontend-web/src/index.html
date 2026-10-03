@@ -58,36 +58,86 @@
   </script>
   <style>
     @media print {
-      body * {
-        visibility: hidden !important;
+      @page {
+        margin: 2mm 3mm;
+        size: auto;
       }
-      #printable-ticket-content, #printable-ticket-content * {
-        visibility: visible !important;
+      html, body {
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        overflow: visible !important;
+      }
+      /* Ocultar elementos estructurales para que no generen páginas vacías */
+      header, footer, main, #staff-active-bar, #toast-container,
+      #staff-modal, #modal-cobro, #pizza-modal, #qr-modal,
+      .no-print, [id^="modal"]:not(#modal-ticket) {
+        display: none !important;
+      }
+      #modal-ticket {
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        max-width: 80mm !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border: none !important;
+        inset: auto !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+      }
+      #modal-ticket > div {
+        position: static !important;
+        display: block !important;
+        width: 100% !important;
+        max-width: 80mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        background: #ffffff !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+      }
+      #modal-ticket .overflow-y-auto {
+        overflow: visible !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        height: auto !important;
+        max-height: none !important;
       }
       #printable-ticket-content {
-        position: fixed !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 78mm !important;
-        max-width: 100% !important;
-        margin: 0 !important;
-        padding: 8px !important;
+        display: block !important;
+        visibility: visible !important;
+        position: static !important;
+        width: 76mm !important;
+        max-width: 76mm !important;
+        margin: 0 auto !important;
+        padding: 2mm 0 !important;
         background: #ffffff !important;
         color: #000000 !important;
         font-family: 'Courier New', Courier, monospace !important;
         font-size: 11px !important;
-        line-height: 1.2 !important;
+        line-height: 1.25 !important;
         border: none !important;
         box-shadow: none !important;
+        box-sizing: border-box !important;
+        page-break-after: avoid !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
-      #modal-ticket {
-        background: transparent !important;
-        position: static !important;
-        display: block !important;
-        padding: 0 !important;
-      }
-      .no-print {
-        display: none !important;
+      #printable-ticket-content * {
+        visibility: visible !important;
       }
     }
   </style>
@@ -889,7 +939,7 @@
   </main>
 
   <!-- ==================== PIE DE PÁGINA (FOOTER COMERCIAL) ==================== -->
-  <footer class="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 mt-16 transition-colors">
+  <footer id="main-commercial-footer" class="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 mt-16 transition-colors">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         
@@ -1426,7 +1476,7 @@
   <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
 
-  <script src="main.js?v=2.4.0"></script>
+  <script src="main.js?v=2.5.0"></script>
 </body>
 </html>
 

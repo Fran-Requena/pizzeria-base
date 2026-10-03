@@ -237,6 +237,7 @@ function returnToStaffPanel(targetTab = 'cocina') {
   }
   document.querySelectorAll('.client-view').forEach(v => v.classList.add('hidden'));
   document.getElementById('view-personal-container')?.classList.remove('hidden');
+  document.getElementById('main-commercial-footer')?.classList.add('hidden');
   
   const navCliente = document.getElementById('nav-cliente');
   const navPersonal = document.getElementById('nav-personal');
@@ -249,9 +250,10 @@ function returnToStaffPanel(targetTab = 'cocina') {
 function switchPersonalTab(tabName) {
   state.activePersonalTab = tabName;
 
-  // Asegurar que el contenedor de personal está visible y vistas cliente ocultas
+  // Asegurar que el contenedor de personal está visible, vistas cliente ocultas y pie comercial oculto
   document.querySelectorAll('.client-view').forEach(v => v.classList.add('hidden'));
   document.getElementById('view-personal-container')?.classList.remove('hidden');
+  document.getElementById('main-commercial-footer')?.classList.add('hidden');
 
   // Actualizar tabs en nav-personal
   document.querySelectorAll('#nav-personal .nav-tab').forEach(tab => {
@@ -340,6 +342,7 @@ function loginStaff(role) {
   document.getElementById('btn-header-cart')?.classList.add('hidden');
   document.getElementById('view-personal-container')?.classList.remove('hidden');
   document.getElementById('staff-active-bar')?.classList.remove('hidden');
+  document.getElementById('main-commercial-footer')?.classList.add('hidden');
 
   // Menú móvil
   document.getElementById('mobile-nav-cliente')?.classList.add('hidden');
@@ -386,6 +389,7 @@ function logoutStaff() {
 
   document.getElementById('view-personal-container')?.classList.add('hidden');
   document.getElementById('staff-active-bar')?.classList.add('hidden');
+  document.getElementById('main-commercial-footer')?.classList.remove('hidden');
   document.getElementById('btn-header-cart')?.classList.remove('hidden');
   document.getElementById('app-subtitle').textContent = 'Auténtica Pizza Napolitana';
 
