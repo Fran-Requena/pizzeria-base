@@ -10,6 +10,7 @@
 # 4. Configuración y Cifrado SSL en DbGate
 # 5. Diagnóstico de Salud de la API (/api/health) y Base de Datos Lógica
 # 6. Estado del Perímetro Cloudflare Zero Trust (Túnel)
+# 7. Diagnóstico de Pasarela de Pagos Stripe (Opcional / Didáctico)
 # ==============================================================================
 
 set +e
@@ -394,7 +395,7 @@ echo ""
 # ------------------------------------------------------------------------------
 # 6. ESTADO DEL TÚNEL CLOUDFLARE ZERO TRUST
 # ------------------------------------------------------------------------------
-echo -e "${CLR_BOLD}[PASO 6/6] Comprobando Perímetro Cloudflare Zero Trust (Túnel)...${CLR_RESET}"
+echo -e "${CLR_BOLD}[PASO 6/7] Comprobando Perímetro Cloudflare Zero Trust (Túnel)...${CLR_RESET}"
 
 TUNNEL_STATUS=$(docker inspect --format '{{.State.Status}}' pizzeria-prod-tunnel 2>/dev/null || echo "not_found")
 
@@ -414,6 +415,61 @@ else
     print_solution_box "Arrancar Túnel Cloudflare" \
         "Asegúrate de tener la variable CLOUDFLARE_TUNNEL_TOKEN en .env y ejecuta:" \
         "docker compose -f docker-compose.app.yml up -d tunnel"
+fi
+
+echo ""
+
+# ------------------------------------------------------------------------------
+# 7. ESTADO DE LA PASARELA DE PAGOS STRIPE (OPCIONAL)
+# ------------------------------------------------------------------------------
+echo -e "${CLR_BOLD}[PASO 7/7] Comprobando Pasarela de Pagos Stripe (Opcional)...${CLR_RESET}"
+
+STRIPE_KEY=$(grep -E '^\s*STRIPE_SECRET_KEY=' .env 2>/dev/null | cut -d '=' -f2- | tr -d ' "\r\n')
+STRIPE_WH=$(grep -E '^\s*STRIPE_WEBHOOK_SECRET=' .env 2>/dev/null | cut -d '=' -f2- | tr -d ' "\r\n')
+
+if [ -z "$STRIPE_KEY" ]; then
+    log_ok "Modo Estándar Activo: STRIPE_SECRET_KEY no configurada (la tienda opera 100% con Efectivo y Datáfono)."
+else
+    # Validar formato
+    if [[ "$STRIPE_KEY" =~ ^sk_test_ ]] || [[ "$STRIPE_KEY" =~ ^sk_live_ ]]; then
+        log_ok "Formato de clave STRIPE_SECRET_KEY correcto."
+        
+        # Test de conexión contra la API de Stripe
+        STRIPE_TEST=$(curl -s -w "\n%{http_code}" -u "$STRIPE_KEY:" https://api.stripe.com/v1/balance 2>/dev/null || echo -e "\n000")
+        HTTP_CODE=$(echo "$STRIPE_TEST" | tail -n 1)
+        RESPONSE_BODY=$(echo "$STRIPE_TEST" | sed '$d')
+        
+        if [ "$HTTP_CODE" = "200" ]; then
+            AVAILABLE_BAL=$(echo "$RESPONSE_BODY" | grep -o '"amount": *[0-9]*' | head -n 1 | awk '{print $2}' || echo "0")
+            if [ -n "$AVAILABLE_BAL" ] && [ "$AVAILABLE_BAL" -gt 0 ]; then
+                BAL_EUR=$(awk "BEGIN {printf \"%.2f\", $AVAILABLE_BAL / 100}")
+                log_ok "Conexión con Stripe Cloud exitosa (Saldo disponible en cuenta de prueba: ${BAL_EUR} €)."
+            else
+                log_ok "Conexión con Stripe Cloud exitosa (Modo de Pruebas activo)."
+            fi
+        else
+            log_error "Fallo al autenticar contra Stripe Cloud (HTTP $HTTP_CODE)."
+            print_solution_box "Comprobar Clave de Stripe" \
+                "La clave configurada en .env no fue aceptada por Stripe." \
+                "1. Abre https://dashboard.stripe.com/test/apikeys" \
+                "2. Copia la 'Clave secreta' (sk_test_...) y pégala en STRIPE_SECRET_KEY en .env" \
+                "3. Reinicia el backend: docker compose -f docker-compose.app.yml restart backend"
+        fi
+    else
+        log_warn "STRIPE_SECRET_KEY no parece una clave válida de Stripe (debe empezar por sk_test_ o sk_live_)."
+    fi
+
+    # Comprobar secreto del webhook
+    if [ -n "$STRIPE_WH" ]; then
+        if [[ "$STRIPE_WH" =~ ^whsec_ ]]; then
+            log_ok "Formato del Secreto de Webhook STRIPE_WEBHOOK_SECRET correcto (whsec_...)."
+        else
+            log_warn "STRIPE_WEBHOOK_SECRET configurado pero no tiene el formato estándar (whsec_...)."
+        fi
+    else
+        log_warn "STRIPE_SECRET_KEY está configurada, pero falta STRIPE_WEBHOOK_SECRET en .env."
+        echo -e "     ${CLR_YELLOW}Sin el webhook secret, la confirmación de pedidos funcionará por reconciliación web pero no por evento push.${CLR_RESET}"
+    fi
 fi
 
 echo ""

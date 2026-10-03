@@ -811,6 +811,8 @@ function renderTrackingUI(pedido) {
       }
     } else if (pedido.metodo_pago === 'tarjeta_entrega' || pedido.metodo_pago === 'tarjeta_recogida') {
       paymentEl.textContent = '💳 Datáfono';
+    } else if (pedido.metodo_pago === 'pago_mesa') {
+      paymentEl.textContent = '🍽️ Pago en Mesa (Cuenta solicitada)';
     } else {
       paymentEl.textContent = '💵 En mano al recibir';
     }
@@ -921,6 +923,8 @@ function renderKDSCard(p) {
     }
   } else if (p.metodo_pago === 'tarjeta_entrega' || p.metodo_pago === 'tarjeta_recogida') {
     pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">💳 Datáfono</span>`;
+  } else if (p.metodo_pago === 'pago_mesa') {
+    pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/30">🍽️ Pago en Mesa</span>`;
   } else {
     pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/30">💵 Efectivo</span>`;
   }
