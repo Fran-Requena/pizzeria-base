@@ -183,3 +183,57 @@ export const handleWebhook = async (req, res) => {
     res.status(500).json({ error: 'Error procesando webhook' });
   }
 };
+
+/**
+ * Confirmación síncrona inmediata al retornar de Stripe Checkout (Patrón de Doble Verificación)
+ */
+export const confirmarSesion = async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(503).json({ success: false, message: 'Stripe no configurado' });
+    }
+
+    const { pedido_id, session_id } = req.body;
+    if (!session_id && !pedido_id) {
+      return res.status(400).json({ success: false, message: 'Falta session_id o pedido_id' });
+    }
+
+    let targetSessionId = session_id;
+    let targetPedidoId = pedido_id;
+
+    // Si solo viene pedido_id, buscar la session_id en BD
+    if (!targetSessionId && targetPedidoId) {
+      const pRes = await query('SELECT stripe_session_id FROM pedidos WHERE id = $1', [targetPedidoId]);
+      if (pRes.rowCount > 0) targetSessionId = pRes.rows[0].stripe_session_id;
+    }
+
+    if (!targetSessionId) {
+      return res.status(400).json({ success: false, message: 'No se encontró sesión de Stripe asociada' });
+    }
+
+    // Consultar a Stripe el estado real de la sesión
+    const session = await stripe.checkout.sessions.retrieve(targetSessionId);
+
+    if (session.payment_status === 'paid') {
+      const finalPedidoId = targetPedidoId || session.client_reference_id || session.metadata?.pedido_id;
+      if (finalPedidoId) {
+        await query(
+          `UPDATE pedidos SET estado_pago = 'pagado', stripe_session_id = $1 WHERE id = $2`,
+          [session.id, parseInt(finalPedidoId, 10)]
+        );
+        console.log(`✅ [Stripe Confirmación] Pedido #${finalPedidoId} confirmado y marcado como PAGADO.`);
+        return res.json({ success: true, estado_pago: 'pagado', pedido_id: finalPedidoId });
+      }
+    }
+
+    res.json({
+      success: true,
+      estado_pago: session.payment_status,
+      message: `Estado actual en Stripe: ${session.payment_status}`,
+    });
+  } catch (error) {
+    console.error('❌ [Error al confirmar sesión Stripe]:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+

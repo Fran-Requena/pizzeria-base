@@ -60,6 +60,7 @@ function checkPaymentRedirectParams() {
   const urlParams = new URLSearchParams(window.location.search);
   const pagoStatus = urlParams.get('pago');
   const pedidoId = urlParams.get('pedido_id');
+  const sessionId = urlParams.get('session_id');
 
   if (pagoStatus === 'exito') {
     if (pedidoId) {
@@ -67,9 +68,24 @@ function checkPaymentRedirectParams() {
       localStorage.setItem('last_pedido_id', pedidoId);
       document.getElementById('badge-tracking')?.classList.remove('hidden');
       switchClientView('tracking');
+
+      // Reconciliación inmediata síncrona
+      fetch(`${API_BASE}/pagos/confirmar-sesion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido_id: pedidoId, session_id: sessionId })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.estado_pago === 'pagado') {
+          showToast('🎉 ¡Pago verificado con Stripe! Tu comanda ha entrado en cocina.', 'success');
+          fetchTrackingData(pedidoId);
+        }
+      })
+      .catch(console.error);
+
       startTrackingPolling();
     }
-    showToast('🎉 ¡Pago verificado con Stripe! Tu comanda ha entrado en cocina.', 'success');
     window.history.replaceState({}, document.title, window.location.pathname);
   } else if (pagoStatus === 'cancelado') {
     if (pedidoId) {
@@ -691,7 +707,25 @@ async function fetchTrackingData(orderId) {
     const res = await fetch(`${API_BASE}/pedidos/${orderId}`);
     const data = await res.json();
     if (res.ok && data.success) {
-      renderTrackingUI(data.data);
+      const pedido = data.data;
+      renderTrackingUI(pedido);
+
+      // Reconciliación automática con Stripe si está pendiente pero tiene sesión
+      if (pedido.metodo_pago === 'stripe' && pedido.estado_pago === 'pendiente' && pedido.stripe_session_id) {
+        fetch(`${API_BASE}/pagos/confirmar-sesion`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pedido_id: pedido.id, session_id: pedido.stripe_session_id })
+        })
+        .then(r => r.json())
+        .then(confData => {
+          if (confData.success && confData.estado_pago === 'pagado') {
+            pedido.estado_pago = 'pagado';
+            renderTrackingUI(pedido);
+          }
+        })
+        .catch(console.error);
+      }
     }
   } catch (err) {
     console.error('Error al consultar tracking:', err);
