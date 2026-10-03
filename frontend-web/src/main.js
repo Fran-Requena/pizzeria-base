@@ -973,7 +973,7 @@ function renderKDSCard(p) {
 
       <div class="pt-1 space-y-1.5">
         ${actionButtons}
-        ${p.estado_pago === 'pendiente' ? `
+        ${(!p.estado_pago || p.estado_pago === 'pendiente') ? `
           <button onclick="openCobroModal(${p.id})" class="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5">
             <span>💶</span> <span>Cobrar (${parseFloat(p.total).toFixed(2)} €)</span>
           </button>
@@ -983,6 +983,7 @@ function renderKDSCard(p) {
           </button>
         `}
       </div>
+
     </div>
   `;
 
@@ -1264,8 +1265,9 @@ function renderPendingBillsTable() {
   const badgeCount = document.getElementById('badge-pos-pendientes-count');
   if (!container) return;
 
-  const todasPendientes = (state.pedidos || []).filter(p => p.estado_pago === 'pendiente');
+  const todasPendientes = (state.pedidos || []).filter(p => !p.estado_pago || p.estado_pago === 'pendiente');
   if (badgeCount) badgeCount.textContent = todasPendientes.length;
+
 
   let filtradas = todasPendientes;
   if (state.cobrosFilter !== 'all') {
