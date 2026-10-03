@@ -1737,7 +1737,7 @@ ________________________________________
 // GESTIÓN DE MODIFICACIÓN / AJUSTE DE COMANDA (CRUD DE PEDIDOS)
 // ==============================================================================
 window.openEditarPedidoModal = async function(orderId) {
-  let order = (state.pedidos || []).find(p => p.id === orderId);
+  let order = (state.pedidos || []).find(p => p.id == orderId);
   if (!order || !order.lineas) {
     try {
       const res = await fetch(`${API_BASE}/pedidos/${orderId}`);
@@ -1755,10 +1755,30 @@ window.openEditarPedidoModal = async function(orderId) {
     return;
   }
 
+  // Asegurar que las pizzas estén cargadas en el catálogo
+  if (!state.pizzas || state.pizzas.length === 0) {
+    try {
+      const pzRes = await fetch(`${API_BASE}/pizzas`);
+      const pzData = await pzRes.json();
+      if (pzData.success && Array.isArray(pzData.data)) {
+        state.pizzas = pzData.data;
+      }
+    } catch (e) {
+      console.error('Error al precargar pizzas:', e);
+    }
+  }
+
+  // Parsear líneas de forma segura
+  let lineas = order.lineas;
+  if (typeof lineas === 'string') {
+    try { lineas = JSON.parse(lineas); } catch (e) { lineas = []; }
+  }
+  if (!Array.isArray(lineas)) lineas = [];
+
   // Clonar en estado de edición
   state.editingOrder = {
     ...order,
-    lineas: Array.isArray(order.lineas) ? JSON.parse(JSON.stringify(order.lineas)) : []
+    lineas: JSON.parse(JSON.stringify(lineas))
   };
 
   const idEl = document.getElementById('edit-pedido-id');
@@ -2066,7 +2086,7 @@ window.guardarEdicionPedido = async function(andCobrar) {
 };
 
 window.openCobroModal = async function(orderId) {
-  let order = (state.pedidos || []).find(p => p.id === orderId);
+  let order = (state.pedidos || []).find(p => p.id == orderId);
   if (!order || !order.lineas) {
     try {
       const res = await fetch(`${API_BASE}/pedidos/${orderId}`);
@@ -2084,26 +2104,42 @@ window.openCobroModal = async function(orderId) {
     return;
   }
 
+  // Parsear líneas de forma segura
+  let lineas = order.lineas;
+  if (typeof lineas === 'string') {
+    try { lineas = JSON.parse(lineas); } catch (e) { lineas = []; }
+  }
+  if (!Array.isArray(lineas)) lineas = [];
+  order.lineas = lineas;
+
   state.cobroModalOrder = order;
 
-  document.getElementById('cobro-order-id').textContent = order.id;
-  document.getElementById('cobro-order-cliente').textContent = order.cliente_nombre || 'Cliente';
-  document.getElementById('cobro-order-total').textContent = `${parseFloat(order.total).toFixed(2)} €`;
+  const idEl = document.getElementById('cobro-order-id');
+  if (idEl) idEl.textContent = order.id;
+
+  const clienteEl = document.getElementById('cobro-order-cliente');
+  if (clienteEl) clienteEl.textContent = order.cliente_nombre || 'Cliente';
+
+  const totalEl = document.getElementById('cobro-order-total');
+  if (totalEl) totalEl.textContent = `${parseFloat(order.total).toFixed(2)} €`;
 
   const tipoBadge = document.getElementById('cobro-order-tipo');
-  if (order.tipo_pedido === 'domicilio') {
-    tipoBadge.textContent = '🛵 Domicilio';
-    tipoBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-brand-500/10 text-brand-500 uppercase border border-brand-500/30';
-  } else if (order.tipo_pedido === 'recoger') {
-    tipoBadge.textContent = '🥡 Para Recoger';
-    tipoBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-500 uppercase border border-amber-500/30';
-  } else {
-    tipoBadge.textContent = `🍽️ Mesa ${order.mesa_numero || '--'}`;
-    tipoBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-500 uppercase border border-emerald-500/30';
+  if (tipoBadge) {
+    if (order.tipo_pedido === 'domicilio') {
+      tipoBadge.textContent = '🛵 Domicilio';
+      tipoBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-brand-500/10 text-brand-500 uppercase border border-brand-500/30';
+    } else if (order.tipo_pedido === 'recoger') {
+      tipoBadge.textContent = '🥡 Para Recoger';
+      tipoBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-500 uppercase border border-amber-500/30';
+    } else {
+      tipoBadge.textContent = `🍽️ Mesa ${order.mesa_numero || '--'}`;
+      tipoBadge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-500 uppercase border border-emerald-500/30';
+    }
   }
 
-  const itemsCount = (order.lineas || []).reduce((acc, i) => acc + (parseInt(i.cantidad, 10) || 1), 0);
-  document.getElementById('cobro-order-items-summary').textContent = `${itemsCount} pizza(s) en la comanda`;
+  const itemsCount = lineas.reduce((acc, i) => acc + (parseInt(i.cantidad, 10) || 1), 0);
+  const itemsSumEl = document.getElementById('cobro-order-items-summary');
+  if (itemsSumEl) itemsSumEl.textContent = `${itemsCount} pizza(s) en la comanda`;
 
   // Pre-seleccionar método
   let methodToSelect = 'efectivo_entrega';
@@ -2125,7 +2161,7 @@ window.openCobroModal = async function(orderId) {
   }
   updateCambioCalculator();
 
-  document.getElementById('modal-cobro').classList.remove('hidden');
+  document.getElementById('modal-cobro')?.classList.remove('hidden');
 };
 
 function updateCobroMethodPanels() {
