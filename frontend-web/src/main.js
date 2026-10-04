@@ -374,6 +374,9 @@ function loginStaff(role) {
   }
 
   startKdsPolling();
+  renderAdminPizzas();
+  renderMesas();
+  renderKDSBoard();
   showToast(`✅ Sesión iniciada como ${role.toUpperCase()}`, 'success');
 }
 
@@ -398,6 +401,9 @@ function logoutStaff() {
   document.getElementById('mobile-nav-personal')?.classList.add('hidden');
 
   switchClientView('landing');
+  renderAdminPizzas();
+  renderMesas();
+  renderKDSBoard();
   showToast('👋 Has vuelto al modo público de cliente', 'info');
 }
 
@@ -936,112 +942,141 @@ function renderKDSBoard() {
   document.getElementById('count-listo').textContent = listos.length;
   document.getElementById('badge-cocina-count').textContent = pendientes.length;
 
+  // WORKLOAD DASHBOARD KPIS (Cálculo en tiempo real de carga de cocina)
+  const totalPizzasPorHornear = [...pendientes, ...preparacion].reduce((acc, p) => {
+    const qty = (p.lineas || []).reduce((sum, l) => sum + (parseInt(l.cantidad, 10) || 1), 0);
+    return acc + qty;
+  }, 0);
+
+  const kpiTotalPizzas = document.getElementById('kds-kpi-total-pizzas');
+  const kpiPendientes = document.getElementById('kds-kpi-comandas-pendientes');
+  const kpiEnHorno = document.getElementById('kds-kpi-en-horno');
+  const kpiSemaforo = document.getElementById('kds-kpi-semaforo');
+
+  if (kpiTotalPizzas) kpiTotalPizzas.textContent = totalPizzasPorHornear;
+  if (kpiPendientes) kpiPendientes.textContent = pendientes.length;
+  if (kpiEnHorno) kpiEnHorno.textContent = preparacion.length;
+
+  if (kpiSemaforo) {
+    if (totalPizzasPorHornear === 0) {
+      kpiSemaforo.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/20 text-slate-300 border border-slate-500/30 uppercase inline-block';
+      kpiSemaforo.textContent = '⚪ Sin Comandas';
+    } else if (totalPizzasPorHornear <= 6) {
+      kpiSemaforo.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase inline-block';
+      kpiSemaforo.textContent = '🟢 Carga Normal';
+    } else if (totalPizzasPorHornear <= 12) {
+      kpiSemaforo.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase inline-block';
+      kpiSemaforo.textContent = '🟡 Horno a Pleno';
+    } else {
+      kpiSemaforo.className = 'px-2 py-0.5 rounded-full text-[10px] font-black bg-red-500/30 text-red-300 border border-red-500/50 uppercase inline-block animate-pulse';
+      kpiSemaforo.textContent = '🔴 Cocina Saturada';
+    }
+  }
+
   listPendiente.innerHTML = pendientes.map(p => renderKDSCard(p)).join('') || '<p class="text-xs text-slate-400 text-center py-8">Sin comandas pendientes</p>';
   listPrep.innerHTML = preparacion.map(p => renderKDSCard(p)).join('') || '<p class="text-xs text-slate-400 text-center py-8">Horno despejado</p>';
   listListo.innerHTML = listos.map(p => renderKDSCard(p)).join('') || '<p class="text-xs text-slate-400 text-center py-8">No hay pedidos en espera</p>';
 }
 
 function renderKDSCard(p) {
-  let badgeColor = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
+  // 1. Canal / Ubicación del pedido (Mesa, Para Recoger o Domicilio)
+  let badgeColor = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30';
   let badgeText = `🍽️ Mesa ${p.mesa_numero || '--'}`;
 
   if (p.tipo_pedido === 'domicilio') {
-    badgeColor = 'bg-brand-500/10 text-brand-500 border-brand-500/30';
-    badgeText = `🛵 Domicilio`;
+    badgeColor = 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30';
+    badgeText = `🛵 Domicilio ${p.cliente_nombre ? `(${p.cliente_nombre.split(' ')[0]})` : ''}`;
   } else if (p.tipo_pedido === 'recoger') {
-    badgeColor = 'bg-amber-500/10 text-amber-500 border-amber-500/30';
-    badgeText = `🥡 Recoger`;
+    badgeColor = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30';
+    badgeText = `🥡 Recoger ${p.cliente_nombre ? `(${p.cliente_nombre.split(' ')[0]})` : ''}`;
   }
 
+  // 2. Cronómetro de tiempo de espera en cocina con código semafórico
+  const createdDate = new Date(p.fecha);
+  const diffMs = Date.now() - createdDate.getTime();
+  const elapsedMinutes = Math.max(0, Math.floor(diffMs / (1000 * 60)));
+
+  let timerBadge = '';
+  if (elapsedMinutes < 10) {
+    timerBadge = `<span class="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">⏱️ ${elapsedMinutes}m</span>`;
+  } else if (elapsedMinutes < 20) {
+    timerBadge = `<span class="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">⏱️ ${elapsedMinutes}m</span>`;
+  } else {
+    timerBadge = `<span class="px-2 py-0.5 rounded-lg text-[11px] font-black bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 animate-pulse">🔥⏱️ ${elapsedMinutes}m</span>`;
+  }
+
+  // 3. Líneas de pizza legibles y directas para el pizzero
   const lineasHtml = (p.lineas || []).map(l => `
-    <div class="flex items-start gap-2 text-xs sm:text-sm">
-      <span class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 font-bold text-xs">${l.cantidad}x</span>
-      <div>
-        <strong class="text-slate-900 dark:text-white">${l.nombre}</strong>
-        ${l.notas ? `<span class="block text-xs text-amber-500 italic font-medium">"${l.notas}"</span>` : ''}
+    <div class="flex items-baseline justify-between gap-2 py-1 border-b border-slate-100 dark:border-slate-800/60 last:border-0">
+      <div class="flex items-center gap-2">
+        <span class="px-2 py-0.5 rounded-md bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-black text-xs shrink-0">${l.cantidad}x</span>
+        <span class="font-bold text-sm text-slate-900 dark:text-white leading-tight">${l.nombre}</span>
       </div>
+      ${l.notas ? `<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-300 text-[11px] font-bold border border-amber-500/30 shrink-0">⚠️ ${l.notas}</span>` : ''}
     </div>
   `).join('');
 
+  // 4. Acción principal táctil según la etapa de elaboración
   let actionButtons = '';
   if (p.estado === 'pendiente') {
     actionButtons = `
-      <button onclick="updateOrderStatus(${p.id}, 'en_preparacion')" class="w-full py-2 rounded-xl bg-brand-orange hover:bg-orange-600 text-white font-bold text-xs shadow-sm transition-all cursor-pointer">
-        🔥 Meter al Horno
+      <button onclick="updateOrderStatus(${p.id}, 'en_preparacion')" class="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2">
+        <span>🔥</span> <span>Amasar / Meter al Horno</span>
       </button>
     `;
   } else if (p.estado === 'en_preparacion') {
     actionButtons = `
-      <button onclick="updateOrderStatus(${p.id}, '${p.tipo_pedido === 'domicilio' ? 'en_reparto' : 'listo'}')" class="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-sm transition-all cursor-pointer">
-        ${p.tipo_pedido === 'domicilio' ? '🛵 A Reparto' : '✅ Marcar Listo'}
+      <button onclick="updateOrderStatus(${p.id}, '${p.tipo_pedido === 'domicilio' ? 'en_reparto' : 'listo'}')" class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2">
+        <span>✅</span> <span>${p.tipo_pedido === 'domicilio' ? 'Listo para Reparto' : 'Listo (Sale del Horno)'}</span>
       </button>
     `;
   } else if (p.estado === 'en_reparto' || p.estado === 'listo') {
     actionButtons = `
-      <button onclick="updateOrderStatus(${p.id}, '${p.tipo_pedido === 'mesa' ? 'servido' : 'entregado'}')" class="w-full py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs shadow-sm transition-all cursor-pointer">
-        📦 Entregado / Servido
+      <button onclick="updateOrderStatus(${p.id}, '${p.tipo_pedido === 'mesa' ? 'servido' : 'entregado'}')" class="w-full py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2">
+        <span>📦</span> <span>${p.tipo_pedido === 'mesa' ? 'Servido a Mesa' : 'Entregado al Cliente'}</span>
       </button>
     `;
   }
 
-  // Badge descriptivo de estado del pago
-  let pagoBadge = '';
-  if (p.metodo_pago === 'stripe') {
-    if (p.estado_pago === 'pagado') {
-      pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">💳 Stripe: Pagado</span>`;
-    } else {
-      pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">💳 Stripe: Pendiente</span>`;
-    }
-  } else if (p.metodo_pago === 'tarjeta_entrega' || p.metodo_pago === 'tarjeta_recogida') {
-    pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">💳 Datáfono</span>`;
-  } else if (p.metodo_pago === 'pago_mesa') {
-    pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/30">🍽️ Pago en Mesa</span>`;
-  } else {
-    pagoBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/30">💵 Efectivo</span>`;
-  }
+  // 5. Botón de ajuste solo accesible para Administrador
+  const adminAjusteBtn = state.userMode === 'admin' ? `
+    <button onclick="openEditarPedidoModal(${p.id})" title="Ajustar Comanda (Admin)" class="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-500 transition-colors cursor-pointer text-xs">
+      ✏️
+    </button>
+  ` : '';
 
   return `
-    <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 space-y-3 shadow-sm hover:border-slate-400 transition-colors">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${badgeColor} uppercase">${badgeText}</span>
-          <strong class="font-bold text-sm">#${p.id}</strong>
-          ${pagoBadge}
+    <div class="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2.5 shadow-sm hover:border-slate-400 dark:hover:border-slate-600 transition-all">
+      <!-- HEADER COMPACTO: CANAL + NÚMERO + CRONÓMETRO -->
+      <div class="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2">
+        <div class="flex items-center gap-1.5">
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-black border ${badgeColor} uppercase tracking-tight">${badgeText}</span>
+          <strong class="font-black text-xs text-slate-500 dark:text-slate-400">#${p.id}</strong>
+          ${adminAjusteBtn}
         </div>
-        <span class="text-xs text-slate-400">${formatTime(p.fecha)}</span>
+        <div class="flex items-center gap-1 shrink-0">
+          ${timerBadge}
+        </div>
       </div>
 
-      <div class="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs">
-        <strong class="block text-slate-900 dark:text-white text-sm">${p.cliente_nombre || 'Cliente'}</strong>
-        ${p.cliente_telefono ? `<span class="text-slate-500 block">📞 Tel: ${p.cliente_telefono}</span>` : ''}
-        ${p.cliente_direccion ? `<span class="text-blue-500 dark:text-blue-400 block font-medium mt-0.5">📍 ${p.cliente_direccion}</span>` : ''}
-      </div>
-
-      <div class="space-y-1.5 pt-1">
+      <!-- LISTA DE PIZZAS (FOCO PRINCIPAL DE COCINA) -->
+      <div class="space-y-0.5">
         ${lineasHtml}
       </div>
 
-      ${p.observaciones ? `<div class="p-2 rounded-lg bg-amber-500/10 border-l-2 border-amber-500 text-xs text-amber-600 dark:text-amber-400">💬 ${p.observaciones}</div>` : ''}
+      <!-- NOTAS DE COCINA O ALERGIAS -->
+      ${p.observaciones ? `
+        <div class="p-2 rounded-xl bg-amber-500/10 border-l-3 border-amber-500 text-xs text-amber-700 dark:text-amber-300 font-semibold">
+          💬 <strong>Nota:</strong> ${p.observaciones}
+        </div>
+      ` : ''}
 
-      <div class="pt-1 space-y-1.5">
+      <!-- ACCIÓN ERGONÓMICA DE AVANCE -->
+      <div class="pt-1">
         ${actionButtons}
-        <button onclick="openEditarPedidoModal(${p.id})" class="w-full py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold text-xs border border-blue-500/20 transition-all cursor-pointer flex items-center justify-center gap-1.5" title="Ajustar o modificar comanda">
-          <span>✏️</span> <span>Ajustar / Modificar Pedido</span>
-        </button>
-        ${(!p.estado_pago || p.estado_pago === 'pendiente') ? `
-          <button onclick="openCobroModal(${p.id})" class="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5">
-            <span>💶</span> <span>Cobrar (${parseFloat(p.total).toFixed(2)} €)</span>
-          </button>
-        ` : `
-          <button onclick="openTicketModal(${p.id})" class="w-full py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700/80 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5">
-            <span>🧾</span> <span>Ver Ticket Fiscal</span>
-          </button>
-        `}
       </div>
-
     </div>
   `;
-
 }
 
 window.updateOrderStatus = async function(orderId, newStatus) {
@@ -1079,6 +1114,8 @@ function renderAdminPizzas() {
   const container = document.getElementById('admin-pizzas-grid');
   if (!container) return;
 
+  const isAdmin = state.userMode === 'admin';
+
   container.innerHTML = state.pizzas.map(p => `
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm flex flex-col justify-between">
       <div class="h-36 overflow-hidden relative bg-slate-100 dark:bg-slate-800">
@@ -1094,10 +1131,14 @@ function renderAdminPizzas() {
         </div>
         <div class="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
           <strong class="text-lg font-bold">${parseFloat(p.precio).toFixed(2)} €</strong>
-          <div class="flex gap-1.5">
-            <button class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs cursor-pointer" onclick="editPizzaModal(${p.id})">✏️</button>
-            <button class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-red-500 hover:text-white text-xs cursor-pointer" onclick="deletePizza(${p.id})">🗑️</button>
-          </div>
+          ${isAdmin ? `
+            <div class="flex gap-1.5">
+              <button class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs cursor-pointer" onclick="editPizzaModal(${p.id})" title="Editar Pizza">✏️</button>
+              <button class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-red-500 hover:text-white text-xs cursor-pointer" onclick="deletePizza(${p.id})" title="Eliminar Pizza">🗑️</button>
+            </div>
+          ` : `
+            <span class="text-[11px] text-slate-400 font-medium italic">🔒 Solo Admin</span>
+          `}
         </div>
       </div>
     </div>
@@ -1177,18 +1218,44 @@ async function savePizzaForm(e) {
 }
 
 // ==============================================================================
-// GESTIÓN DE SALA & MESAS (QR CODES CON TAILWIND)
+// GESTIÓN DE SALA & MESAS (CRUD COMPLETO Y QR CODES)
 // ==============================================================================
 async function loadMesas() {
   try {
     const res = await fetch(`${API_BASE}/mesas`);
     const data = await res.json();
     if (data.success && Array.isArray(data.data)) {
-      state.mesas = data.data;
+      state.mesas = data.data.sort((a, b) => parseInt(a.numero, 10) - parseInt(b.numero, 10));
       renderMesas();
+      populateMesaSelects();
     }
   } catch (err) {
     console.error('Error al cargar mesas:', err);
+  }
+}
+
+function populateMesaSelects() {
+  const posSelect = document.getElementById('pos-mesa');
+  const editSelect = document.getElementById('edit-pedido-mesa');
+
+  const optionsHtml = (state.mesas || []).map(m => `
+    <option value="${m.numero}">Mesa ${m.numero} (${m.capacidad}p - ${m.estado})</option>
+  `).join('');
+
+  if (posSelect && optionsHtml) {
+    const currentVal = posSelect.value;
+    posSelect.innerHTML = optionsHtml;
+    if (currentVal && state.mesas.some(m => String(m.numero) === String(currentVal))) {
+      posSelect.value = currentVal;
+    }
+  }
+
+  if (editSelect) {
+    const currentVal = editSelect.value;
+    editSelect.innerHTML = `<option value="">-- Sin mesa --</option>` + optionsHtml;
+    if (currentVal) {
+      editSelect.value = currentVal;
+    }
   }
 }
 
@@ -1196,21 +1263,163 @@ function renderMesas() {
   const container = document.getElementById('mesas-grid');
   if (!container) return;
 
-  container.innerHTML = state.mesas.map(m => `
-    <div class="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
-      <div class="flex items-center justify-between">
-        <h3 class="font-display font-black text-xl text-slate-900 dark:text-white">Mesa ${m.numero}</h3>
-        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase ${m.estado === 'ocupada' ? 'bg-red-500/10 text-red-500 border border-red-500/30' : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/30'}">
-          ${m.estado}
-        </span>
+  const isAdmin = state.userMode === 'admin';
+
+  container.innerHTML = state.mesas.map(m => {
+    let estadoClass = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30';
+    let estadoIcon = '🟢';
+    if (m.estado === 'ocupada') {
+      estadoClass = 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30';
+      estadoIcon = '🔴';
+    } else if (m.estado === 'reservada') {
+      estadoClass = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30';
+      estadoIcon = '🟡';
+    }
+
+    const comandasActivas = (state.pedidos || []).filter(p => 
+      parseInt(p.mesa_numero, 10) === parseInt(m.numero, 10) && 
+      ['pendiente', 'en_preparacion', 'listo'].includes(p.estado)
+    );
+
+    return `
+      <div class="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="font-display font-black text-2xl text-slate-900 dark:text-white flex items-center gap-2">
+              <span>🪑</span> <span>Mesa ${m.numero}</span>
+            </h3>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase border ${estadoClass}">
+              ${estadoIcon} ${m.estado}
+            </span>
+          </div>
+
+          <div class="space-y-1 text-xs">
+            <p class="text-slate-500 dark:text-slate-400">
+              Capacidad: <strong class="text-slate-800 dark:text-slate-200 font-bold">${m.capacidad} comensales</strong>
+            </p>
+            ${comandasActivas.length > 0 ? `
+              <span class="inline-block px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold text-[11px] border border-orange-500/20">
+                🔥 ${comandasActivas.length} comanda(s) activa(s)
+              </span>
+            ` : `
+              <span class="text-slate-400 text-[11px]">Sin comandas en curso</span>
+            `}
+          </div>
+        </div>
+
+        <div class="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <button class="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5" onclick="showQrModal(${m.numero})">
+            <span>📱</span> <span>Ver Código QR</span>
+          </button>
+          
+          ${isAdmin ? `
+            <div class="grid grid-cols-2 gap-2">
+              <button class="py-2 px-3 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold border border-blue-500/20 transition-all cursor-pointer flex items-center justify-center gap-1" onclick="openEditMesaModal(${m.numero})" title="Modificar número o comensales">
+                <span>✏️</span> <span>Editar</span>
+              </button>
+              <button class="py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-bold border border-red-500/20 transition-all cursor-pointer flex items-center justify-center gap-1" onclick="deleteMesa(${m.numero})" title="Eliminar mesa de la sala">
+                <span>🗑️</span> <span>Borrar</span>
+              </button>
+            </div>
+          ` : ''}
+        </div>
       </div>
-      <p class="text-xs text-slate-500">Capacidad: <strong class="text-slate-800 dark:text-slate-200">${m.capacidad} comensales</strong></p>
-      <button class="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer" onclick="showQrModal(${m.numero})">
-        📱 Ver Código QR
-      </button>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
+
+window.openCreateMesaModal = function() {
+  document.getElementById('modal-mesa-title').textContent = 'Nueva Mesa';
+  document.getElementById('form-mesa-orig-numero').value = '';
+  
+  const nextNum = state.mesas && state.mesas.length > 0 
+    ? Math.max(...state.mesas.map(m => parseInt(m.numero, 10) || 0)) + 1 
+    : 1;
+  document.getElementById('form-mesa-numero').value = nextNum;
+  document.getElementById('form-mesa-capacidad').value = 4;
+  document.getElementById('form-mesa-estado').value = 'libre';
+  
+  document.getElementById('modal-mesa').classList.remove('hidden');
+};
+
+window.openEditMesaModal = function(mesaNum) {
+  const mesa = state.mesas.find(m => parseInt(m.numero, 10) === parseInt(mesaNum, 10));
+  if (!mesa) return;
+
+  document.getElementById('modal-mesa-title').textContent = `✏️ Editar Mesa #${mesa.numero}`;
+  document.getElementById('form-mesa-orig-numero').value = mesa.numero;
+  document.getElementById('form-mesa-numero').value = mesa.numero;
+  document.getElementById('form-mesa-capacidad').value = mesa.capacidad;
+  document.getElementById('form-mesa-estado').value = mesa.estado;
+
+  document.getElementById('modal-mesa').classList.remove('hidden');
+};
+
+window.closeMesaModal = function() {
+  document.getElementById('modal-mesa')?.classList.add('hidden');
+};
+
+window.saveMesaForm = async function(e) {
+  if (e) e.preventDefault();
+  
+  const origNumero = document.getElementById('form-mesa-orig-numero').value;
+  const numero = parseInt(document.getElementById('form-mesa-numero').value, 10);
+  const capacidad = parseInt(document.getElementById('form-mesa-capacidad').value, 10);
+  const estado = document.getElementById('form-mesa-estado').value;
+
+  if (!numero || isNaN(numero) || numero <= 0) {
+    showToast('⚠️ Introduce un número de mesa válido', 'warning');
+    return;
+  }
+
+  const payload = { numero, capacidad, estado };
+
+  try {
+    let res;
+    if (origNumero) {
+      res = await fetch(`${API_BASE}/mesas/${origNumero}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      res = await fetch(`${API_BASE}/mesas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(origNumero ? `✅ Mesa #${numero} actualizada` : `🎉 Mesa #${numero} creada con éxito`, 'success');
+      closeMesaModal();
+      await loadMesas();
+    } else {
+      showToast(`❌ ${data.message || 'Error al guardar mesa'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`❌ Error: ${err.message}`, 'error');
+  }
+};
+
+window.deleteMesa = async function(mesaNum) {
+  if (!confirm(`¿Seguro que deseas eliminar permanentemente la Mesa #${mesaNum} del restaurante?`)) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/mesas/${mesaNum}`, { method: 'DELETE' });
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      showToast(`🗑️ Mesa #${mesaNum} eliminada correctamente`, 'success');
+      await loadMesas();
+    } else {
+      showToast(`❌ ${data.message || 'No se pudo eliminar la mesa'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`❌ Error al eliminar mesa: ${err.message}`, 'error');
+  }
+};
 
 window.showQrModal = function(mesaNum) {
   const modal = document.getElementById('qr-modal');
@@ -2499,6 +2708,9 @@ function initEventListeners() {
   document.getElementById('btn-close-qr-modal')?.addEventListener('click', () => {
     document.getElementById('qr-modal').classList.add('hidden');
   });
+
+  document.getElementById('btn-close-mesa-modal')?.addEventListener('click', closeMesaModal);
+  document.getElementById('btn-cancel-mesa-modal')?.addEventListener('click', closeMesaModal);
 
   document.getElementById('btn-tracking-back-menu')?.addEventListener('click', () => switchClientView('menu'));
 

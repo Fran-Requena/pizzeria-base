@@ -116,3 +116,137 @@ export const updateEstadoMesa = async (req, res) => {
     });
   }
 };
+
+/**
+ * Crear una nueva mesa física en la sala (Solo Admin)
+ */
+export const createMesa = async (req, res) => {
+  try {
+    const { numero, capacidad, estado } = req.body;
+
+    const num = parseInt(numero, 10);
+    if (!num || num <= 0) {
+      return res.status(400).json({ success: false, message: 'El número de mesa debe ser un entero positivo' });
+    }
+
+    // Comprobar si ya existe
+    const existe = await query('SELECT id FROM mesas WHERE numero = $1', [num]);
+    if (existe.rowCount > 0) {
+      return res.status(400).json({ success: false, message: `La Mesa #${num} ya existe en el restaurante` });
+    }
+
+    const cap = parseInt(capacidad, 10) || 4;
+    const est = estado || 'libre';
+
+    const sql = `
+      INSERT INTO mesas (numero, capacidad, estado)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `;
+
+    const result = await query(sql, [num, cap, est]);
+
+    res.status(201).json({
+      success: true,
+      message: `Mesa #${num} creada correctamente`,
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Error al crear mesa:', error);
+    res.status(500).json({ success: false, message: 'Error interno al crear mesa', error: error.message });
+  }
+};
+
+/**
+ * Modificar datos de una mesa (número, capacidad, estado) (Solo Admin)
+ */
+export const updateMesa = async (req, res) => {
+  try {
+    const { numero: paramNumero } = req.params;
+    const { numero, capacidad, estado } = req.body;
+
+    const numOriginal = parseInt(paramNumero, 10);
+    const nuevoNumero = numero !== undefined ? parseInt(numero, 10) : numOriginal;
+    const nuevaCapacidad = capacidad !== undefined ? parseInt(capacidad, 10) : undefined;
+
+    // Verificar si la mesa existe
+    const mesaPrev = await query('SELECT * FROM mesas WHERE numero = $1', [numOriginal]);
+    if (mesaPrev.rowCount === 0) {
+      return res.status(404).json({ success: false, message: `Mesa #${numOriginal} no encontrada` });
+    }
+
+    // Si cambia de número, comprobar que no esté duplicado
+    if (nuevoNumero !== numOriginal) {
+      const existeNuevo = await query('SELECT id FROM mesas WHERE numero = $1', [nuevoNumero]);
+      if (existeNuevo.rowCount > 0) {
+        return res.status(400).json({ success: false, message: `Ya existe otra mesa con el número ${nuevoNumero}` });
+      }
+    }
+
+    const capFinal = nuevaCapacidad !== undefined ? nuevaCapacidad : mesaPrev.rows[0].capacidad;
+    const estFinal = estado || mesaPrev.rows[0].estado;
+
+    const sql = `
+      UPDATE mesas
+      SET numero = $1, capacidad = $2, estado = $3
+      WHERE numero = $4
+      RETURNING *
+    `;
+
+    const result = await query(sql, [nuevoNumero, capFinal, estFinal, numOriginal]);
+
+    // Si cambió el número de mesa, actualizar pedidos en curso con el número anterior para coherencia
+    if (nuevoNumero !== numOriginal) {
+      await query(`UPDATE pedidos SET mesa_numero = $1 WHERE mesa_numero = $2 AND estado IN ('pendiente', 'en_preparacion', 'listo')`, [nuevoNumero, numOriginal]);
+    }
+
+    res.json({
+      success: true,
+      message: `Mesa #${nuevoNumero} modificada con éxito`,
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error(`Error al modificar mesa #${req.params.numero}:`, error);
+    res.status(500).json({ success: false, message: 'Error interno al modificar mesa', error: error.message });
+  }
+};
+
+/**
+ * Eliminar una mesa (Solo Admin)
+ */
+export const deleteMesa = async (req, res) => {
+  try {
+    const { numero } = req.params;
+    const num = parseInt(numero, 10);
+
+    // Verificar si la mesa existe
+    const mesaRes = await query('SELECT * FROM mesas WHERE numero = $1', [num]);
+    if (mesaRes.rowCount === 0) {
+      return res.status(404).json({ success: false, message: `Mesa #${num} no encontrada` });
+    }
+
+    // Comprobar si tiene pedidos activos en cocina o sala
+    const pedidosActivos = await query(
+      `SELECT id FROM pedidos WHERE mesa_numero = $1 AND estado IN ('pendiente', 'en_preparacion', 'listo')`,
+      [num]
+    );
+
+    if (pedidosActivos.rowCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `No se puede eliminar la Mesa #${num} porque tiene comandas activas pendientes o en preparación.`
+      });
+    }
+
+    await query('DELETE FROM mesas WHERE numero = $1', [num]);
+
+    res.json({
+      success: true,
+      message: `Mesa #${num} eliminada del plano de sala`,
+    });
+  } catch (error) {
+    console.error(`Error al eliminar mesa #${req.params.numero}:`, error);
+    res.status(500).json({ success: false, message: 'Error interno al eliminar mesa', error: error.message });
+  }
+};
+

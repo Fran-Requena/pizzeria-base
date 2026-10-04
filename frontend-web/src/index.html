@@ -593,6 +593,38 @@
           </div>
         </div>
 
+        <!-- BARRA DE CARGA DE COCINA (WORKLOAD DASHBOARD) -->
+        <div id="kds-workload-dashboard" class="grid grid-cols-2 lg:grid-cols-4 gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-md border border-slate-700/60">
+          <div class="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-white/10">
+            <span class="text-2xl p-2 rounded-xl bg-brand-500/20 text-brand-400 shrink-0">🍕</span>
+            <div>
+              <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Pizzas por Hornear</span>
+              <strong id="kds-kpi-total-pizzas" class="text-xl font-black text-white">0</strong>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-white/10">
+            <span class="text-2xl p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">⏳</span>
+            <div>
+              <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Comandas en Cola</span>
+              <strong id="kds-kpi-comandas-pendientes" class="text-xl font-black text-amber-400">0</strong>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-white/10">
+            <span class="text-2xl p-2 rounded-xl bg-orange-500/20 text-orange-400 shrink-0">🔥</span>
+            <div>
+              <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">En Horno Ahora</span>
+              <strong id="kds-kpi-en-horno" class="text-xl font-black text-orange-400">0</strong>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 p-2 rounded-xl bg-white/5 border border-white/10">
+            <span class="text-2xl p-2 rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">🚦</span>
+            <div>
+              <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Ritmo de Cocina</span>
+              <span id="kds-kpi-semaforo" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase inline-block">🟢 Carga Normal</span>
+            </div>
+          </div>
+        </div>
+
         <!-- KANBAN BOARD -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <!-- Columna 1: Pendientes -->
@@ -741,7 +773,7 @@
             <h2 class="font-display font-black text-2xl text-slate-900 dark:text-white">🍕 Administración del Catálogo de Pizzas</h2>
             <p class="text-sm text-slate-500 dark:text-slate-400">Creación, edición de precios, disponibilidad e ingredientes en PostgreSQL.</p>
           </div>
-          <button id="btn-open-new-pizza" class="px-5 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold text-sm shadow-md transition-all cursor-pointer">
+          <button id="btn-open-new-pizza" class="admin-only px-5 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold text-sm shadow-md transition-all cursor-pointer">
             ➕ Añadir Nueva Pizza
           </button>
         </div>
@@ -750,9 +782,16 @@
 
       <!-- TAB 4: GESTIÓN DE MESAS & QR (SOLO ADMIN) -->
       <section id="tab-mesas" class="tab-content hidden space-y-6">
-        <div>
-          <h2 class="font-display font-black text-2xl text-slate-900 dark:text-white">🪑 Gestión de Sala & Códigos QR</h2>
-          <p class="text-sm text-slate-500 dark:text-slate-400">Descarga o visualiza los códigos QR para cada mesa física del restaurante.</p>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="font-display font-black text-2xl text-slate-900 dark:text-white flex items-center gap-2">
+              <span>🪑</span> <span>Gestión de Sala & Códigos QR</span>
+            </h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Administra el aforo, crea o modifica mesas físicas y obtén sus códigos QR.</p>
+          </div>
+          <button id="btn-nueva-mesa" onclick="openCreateMesaModal()" class="admin-only px-5 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0">
+            <span>➕</span> <span>Añadir Mesa</span>
+          </button>
         </div>
         <div id="mesas-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
       </section>
@@ -1237,6 +1276,55 @@
     </div>
   </div>
 
+  <!-- ==================== MODAL DE GESTIÓN DE MESA (ADMIN) ==================== -->
+  <div id="modal-mesa" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4 relative">
+      <button id="btn-close-mesa-modal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white text-2xl cursor-pointer">&times;</button>
+      
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-brand-500/10 text-brand-500 flex items-center justify-center text-xl shrink-0">
+          🪑
+        </div>
+        <div>
+          <h3 id="modal-mesa-title" class="font-display font-black text-xl text-slate-900 dark:text-white">Nueva Mesa</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Configuración de sala</p>
+        </div>
+      </div>
+
+      <form id="form-mesa" onsubmit="saveMesaForm(event)" class="space-y-3.5 text-xs">
+        <input type="hidden" id="form-mesa-orig-numero" value="">
+
+        <div>
+          <label class="block font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 text-[10px]">Número de Mesa</label>
+          <input type="number" id="form-mesa-numero" required min="1" max="999" placeholder="Ej: 9" class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-sm text-slate-800 dark:text-white focus:outline-none focus:border-brand-500">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 text-[10px]">Capacidad (Comensales)</label>
+          <input type="number" id="form-mesa-capacidad" required min="1" max="50" value="4" class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-sm text-slate-800 dark:text-white focus:outline-none focus:border-brand-500">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 text-[10px]">Estado Inicial</label>
+          <select id="form-mesa-estado" class="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-xs text-slate-800 dark:text-white focus:outline-none focus:border-brand-500">
+            <option value="libre">🟢 Libre</option>
+            <option value="ocupada">🔴 Ocupada</option>
+            <option value="reservada">🟡 Reservada</option>
+          </select>
+        </div>
+
+        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+          <button type="button" id="btn-cancel-mesa-modal" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition-all">
+            Cancelar
+          </button>
+          <button type="submit" id="btn-save-mesa" class="px-5 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold shadow-md cursor-pointer transition-all flex items-center gap-1.5">
+            <span>💾</span> <span>Guardar Mesa</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ==================== MODAL DE MODIFICACIÓN / AJUSTE DE COMANDA ==================== -->
   <div id="modal-editar-pedido" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
     <div class="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-4 relative my-auto max-h-[92vh] flex flex-col">
@@ -1637,7 +1725,7 @@
   <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
 
-  <script src="main.js?v=2.6.1"></script>
+  <script src="main.js?v=2.7.0"></script>
 </body>
 </html>
 
