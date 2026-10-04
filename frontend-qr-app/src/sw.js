@@ -2,15 +2,15 @@
 // SERVICE WORKER: PWA PIZZERÍA BELLA NAPOLI (MÓDULO PMDM / DAM)
 // ==============================================================================
 
-const CACHE_NAME = 'pizzeria-pwa-v3';
+const CACHE_NAME = 'pizzeria-pwa-v4';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/main.js',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
+  '/app/',
+  '/app/index.html',
+  '/app/style.css',
+  '/app/main.js',
+  '/app/manifest.json',
+  '/app/icon-192.png',
+  '/app/icon-512.png'
 ];
 
 // Instalación del Service Worker y precarga de archivos en caché local del móvil

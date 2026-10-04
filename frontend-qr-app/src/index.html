@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  <base href="/app/">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#dc2626">
@@ -223,7 +224,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
+        navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' })
           .then(reg => console.log('📱 [PWA] Service Worker activo:', reg.scope))
           .catch(err => console.warn('⚠️ [PWA] SW:', err));
       });
