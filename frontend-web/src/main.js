@@ -1727,11 +1727,22 @@ function renderHistoricoTable() {
       return pDate >= sieteDiasAtras;
     });
   } else if (state.historicoRango === 'custom') {
-    const fechaPickerVal = document.getElementById('historico-date-input')?.value || state.historicoFecha;
-    if (fechaPickerVal) {
+    const fechaDesde = document.getElementById('historico-date-desde')?.value || state.historicoFechaDesde || '';
+    const fechaHasta = document.getElementById('historico-date-hasta')?.value || state.historicoFechaHasta || '';
+    if (fechaDesde && fechaHasta) {
       filtradas = filtradas.filter(p => {
         const pFecha = p.fecha ? p.fecha.split('T')[0] : '';
-        return pFecha === fechaPickerVal;
+        return pFecha >= fechaDesde && pFecha <= fechaHasta;
+      });
+    } else if (fechaDesde) {
+      filtradas = filtradas.filter(p => {
+        const pFecha = p.fecha ? p.fecha.split('T')[0] : '';
+        return pFecha >= fechaDesde;
+      });
+    } else if (fechaHasta) {
+      filtradas = filtradas.filter(p => {
+        const pFecha = p.fecha ? p.fecha.split('T')[0] : '';
+        return pFecha <= fechaHasta;
       });
     }
   }
@@ -1784,7 +1795,7 @@ function renderHistoricoTable() {
   if (kpiTarjeta) kpiTarjeta.textContent = `${totalTarjeta.toFixed(2)} €`;
   if (kpiStripe) kpiStripe.textContent = `${totalStripe.toFixed(2)} €`;
 
-  // ARQUEO & CUADRE CONTABLE DE CAJA (FONDO INICIAL + EFECTIVO)
+  // ARQUEO & CUADRE CONTABLE DE CAJA (FONDO INICIAL + ENTRADAS EFECTIVO - SALIDAS GASTOS)
   const inputFondo = document.getElementById('input-fondo-caja-inicial');
   if (inputFondo) {
     if (!inputFondo.value || document.activeElement !== inputFondo) {
@@ -1795,13 +1806,19 @@ function renderHistoricoTable() {
   const fondoInicial = parseFloat(inputFondo?.value) || state.fondoCajaInicial || 100;
   state.fondoCajaInicial = fondoInicial;
 
+  // Salidas / Pagos de caja
+  const inputSalidas = document.getElementById('input-salidas-caja');
+  const salidasCaja = (inputSalidas && inputSalidas.value !== '') ? (parseFloat(inputSalidas.value) || 0) : (state.salidasCaja || 0);
+  state.salidasCaja = salidasCaja;
+
   const ventasEfectivoEl = document.getElementById('val-ventas-efectivo-arqueo');
   const teoricoCajonEl = document.getElementById('val-teorico-cajon-arqueo');
   const inputRecuento = document.getElementById('input-recuento-real-caja');
   const descuadreEl = document.getElementById('val-descuadre-caja');
   const badgeCuadre = document.getElementById('badge-cuadre-caja');
 
-  const teoricoCajon = fondoInicial + totalEfectivo;
+  // Fórmula contable: Teórico = Fondo Inicial + Entradas Efectivo - Salidas/Gastos
+  const teoricoCajon = Math.max(0, fondoInicial + totalEfectivo - salidasCaja);
 
   if (ventasEfectivoEl) ventasEfectivoEl.textContent = `${totalEfectivo.toFixed(2)} €`;
   if (teoricoCajonEl) teoricoCajonEl.textContent = `${teoricoCajon.toFixed(2)} €`;
@@ -1968,18 +1985,32 @@ function imprimirArqueoDiario() {
   const strp = document.getElementById('kpi-historico-stripe')?.textContent || '0.00 €';
 
   const fondo = parseFloat(document.getElementById('input-fondo-caja-inicial')?.value || 100).toFixed(2);
+  const salidas = parseFloat(document.getElementById('input-salidas-caja')?.value || 0).toFixed(2);
   const teorico = document.getElementById('val-teorico-cajon-arqueo')?.textContent || '0.00 €';
   const recuentoInput = document.getElementById('input-recuento-real-caja');
   const recuento = (recuentoInput && recuentoInput.value !== '' ? parseFloat(recuentoInput.value) : parseFloat(teorico)).toFixed(2);
   const descuadre = document.getElementById('val-descuadre-caja')?.textContent || '0.00 €';
+
+  // Período seleccionado
+  let rangoTexto = 'Hoy (' + hoyStr + ')';
+  if (state.historicoRango === 'ayer') rangoTexto = 'Ayer';
+  else if (state.historicoRango === 'semana') rangoTexto = 'Últimos 7 días';
+  else if (state.historicoRango === 'todos') rangoTexto = 'Todo el histórico acumulado';
+  else if (state.historicoRango === 'custom') {
+    const fDesde = document.getElementById('historico-date-desde')?.value;
+    const fHasta = document.getElementById('historico-date-hasta')?.value;
+    if (fDesde && fHasta) rangoTexto = `Del ${fDesde} al ${fHasta}`;
+    else if (fDesde) rangoTexto = `Desde el ${fDesde}`;
+    else if (fHasta) rangoTexto = `Hasta el ${fHasta}`;
+  }
 
   const ticketContent = `
 ========================================
        PIZZERÍA BELLA NAPOLI
     INFORME DE CIERRE DE CAJA / ARQUEO
 ========================================
-Fecha Informe: ${hoyStr}
-Hora Emisión:  ${new Date().toLocaleTimeString()}
+Período:       ${rangoTexto}
+Fecha Emisión: ${hoyStr} ${new Date().toLocaleTimeString()}
 Responsable:   Turno Activo (${state.userMode.toUpperCase()})
 ----------------------------------------
 Comandas Cerradas:      ${pedidosCount}
@@ -1993,6 +2024,7 @@ DESGLOSE POR MODALIDAD DE COBRO:
 CONCILIACIÓN Y CUADRE DE CAJÓN FÍSICO:
   (+) Fondo Apertura:   ${fondo} €
   (+) Cobros Efectivo:  ${efec}
+  (-) Salidas / Gastos: ${salidas} €
   (=) Teórico Esperado: ${teorico}
   (•) Recuento Físico:  ${recuento} €
   --------------------------------------
@@ -3068,13 +3100,32 @@ function initEventListeners() {
     });
   });
 
-  document.getElementById('historico-date-input')?.addEventListener('change', (e) => {
-    state.historicoRango = 'custom';
-    state.historicoFecha = e.target.value;
-    document.querySelectorAll('.pill-historico-rango').forEach(b => {
-      b.className = 'pill-historico-rango px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-slate-400 transition-all cursor-pointer whitespace-nowrap';
-    });
-    renderHistoricoTable();
+  const handleDateRangeChange = () => {
+    const fDesde = document.getElementById('historico-date-desde')?.value || '';
+    const fHasta = document.getElementById('historico-date-hasta')?.value || '';
+    if (fDesde || fHasta) {
+      state.historicoRango = 'custom';
+      state.historicoFechaDesde = fDesde;
+      state.historicoFechaHasta = fHasta;
+      document.querySelectorAll('.pill-historico-rango').forEach(b => {
+        b.className = 'pill-historico-rango px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-slate-400 transition-all cursor-pointer whitespace-nowrap';
+      });
+      renderHistoricoTable();
+    }
+  };
+
+  document.getElementById('historico-date-desde')?.addEventListener('change', handleDateRangeChange);
+  document.getElementById('historico-date-hasta')?.addEventListener('change', handleDateRangeChange);
+
+  document.getElementById('btn-clear-date-range')?.addEventListener('click', () => {
+    const d1 = document.getElementById('historico-date-desde');
+    const d2 = document.getElementById('historico-date-hasta');
+    if (d1) d1.value = '';
+    if (d2) d2.value = '';
+    state.historicoFechaDesde = '';
+    state.historicoFechaHasta = '';
+    const btnHoy = document.querySelector('.pill-historico-rango[data-rango="hoy"]');
+    if (btnHoy) btnHoy.click();
   });
 
   document.getElementById('historico-search-input')?.addEventListener('input', () => {
@@ -3138,6 +3189,12 @@ function initEventListeners() {
     const val = parseFloat(e.target.value) || 0;
     state.fondoCajaInicial = val;
     localStorage.setItem('pizzeria_fondo_caja', val.toString());
+    renderHistoricoTable();
+  });
+
+  document.getElementById('input-salidas-caja')?.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value) || 0;
+    state.salidasCaja = val;
     renderHistoricoTable();
   });
 

@@ -905,11 +905,14 @@
             </button>
           </div>
 
-          <!-- Selector de fecha específica y búsqueda -->
+          <!-- Selector de fecha específica / rango y búsqueda -->
           <div class="flex items-center gap-2 flex-wrap md:flex-nowrap">
-            <div class="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
-              <span class="text-xs text-slate-500 font-semibold">📅 Fecha:</span>
-              <input type="date" id="historico-date-input" class="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer">
+            <div class="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
+              <span class="text-xs text-slate-500 font-semibold">📅 Desde:</span>
+              <input type="date" id="historico-date-desde" class="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer">
+              <span class="text-xs text-slate-400 font-semibold">Hasta:</span>
+              <input type="date" id="historico-date-hasta" class="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer">
+              <button id="btn-clear-date-range" class="text-xs text-slate-400 hover:text-red-500 font-bold ml-1 cursor-pointer" title="Restablecer fechas">&times;</button>
             </div>
             <input type="text" id="historico-search-input" placeholder="🔍 Buscar comanda o cliente..." class="px-3.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs focus:ring-2 focus:ring-brand-500 focus:outline-none min-w-[200px]">
           </div>
@@ -953,7 +956,7 @@
               <span class="text-2xl p-2 rounded-xl bg-amber-500/20 text-amber-400">💰</span>
               <div>
                 <h3 class="font-display font-black text-lg text-white">Arqueo & Cuadre Contable de Caja</h3>
-                <p class="text-xs text-slate-400">Conciliación de fondo inicial, ventas en efectivo y recuento real en cajón</p>
+                <p class="text-xs text-slate-400">Conciliación de fondo inicial, entradas en efectivo, gastos/salidas y recuento físico</p>
               </div>
             </div>
             <div class="flex items-center gap-2">
@@ -963,7 +966,7 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 text-xs">
             <!-- 1. Fondo / Saldo Inicial -->
             <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
               <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">1. Fondo Inicial (Apertura)</label>
@@ -974,23 +977,33 @@
               <small class="text-[10px] text-slate-400 block">Monedas y billetes para cambio</small>
             </div>
 
-            <!-- 2. Ventas en Efectivo -->
+            <!-- 2. Ventas en Efectivo (Entradas) -->
             <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
-              <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">2. (+) Ventas en Efectivo</span>
+              <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">2. (+) Entradas Efectivo</span>
               <strong id="val-ventas-efectivo-arqueo" class="text-xl font-black text-emerald-400 block pt-1">0.00 €</strong>
               <small class="text-[10px] text-slate-400 block">Recaudado del período</small>
             </div>
 
-            <!-- 3. Efectivo Teórico Esperado -->
+            <!-- 3. Salidas / Gastos de Caja (Salidas) -->
             <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
-              <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">3. (=) Teórico en Cajón</span>
-              <strong id="val-teorico-cajon-arqueo" class="text-xl font-black text-blue-400 block pt-1">100.00 €</strong>
-              <small class="text-[10px] text-slate-400 block">Fondo inicial + Efectivo cobrado</small>
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">3. (-) Salidas / Gastos</label>
+              <div class="relative">
+                <input type="number" id="input-salidas-caja" step="0.01" min="0" value="0.00" placeholder="0.00" class="w-full py-1.5 px-3 rounded-xl bg-slate-950/80 border border-slate-700 font-black text-base text-rose-400 focus:outline-none focus:border-rose-400">
+                <span class="absolute right-3 top-2 text-xs font-bold text-slate-400">€</span>
+              </div>
+              <small class="text-[10px] text-slate-400 block">Compras menores o retiradas</small>
             </div>
 
-            <!-- 4. Recuento Real Contado -->
+            <!-- 4. Efectivo Teórico Esperado -->
             <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">4. Recuento Físico (Cierre)</label>
+              <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">4. (=) Teórico en Cajón</span>
+              <strong id="val-teorico-cajon-arqueo" class="text-xl font-black text-blue-400 block pt-1">100.00 €</strong>
+              <small class="text-[10px] text-slate-400 block">Fondo + Entradas - Salidas</small>
+            </div>
+
+            <!-- 5. Recuento Real Contado -->
+            <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">5. Recuento Real (Cierre)</label>
               <div class="relative">
                 <input type="number" id="input-recuento-real-caja" step="0.01" min="0" placeholder="0.00" class="w-full py-1.5 px-3 rounded-xl bg-slate-950/80 border border-slate-700 font-black text-base text-white focus:outline-none focus:border-emerald-400">
                 <span class="absolute right-3 top-2 text-xs font-bold text-slate-400">€</span>
