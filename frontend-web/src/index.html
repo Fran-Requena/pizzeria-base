@@ -946,6 +946,63 @@
           </div>
         </div>
 
+        <!-- PANEL DE CUADRE DE CAJA & ARQUEO PROFESIONAL -->
+        <div class="p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white border border-slate-700/80 shadow-lg space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700/60 pb-3">
+            <div class="flex items-center gap-2.5">
+              <span class="text-2xl p-2 rounded-xl bg-amber-500/20 text-amber-400">💰</span>
+              <div>
+                <h3 class="font-display font-black text-lg text-white">Arqueo & Cuadre Contable de Caja</h3>
+                <p class="text-xs text-slate-400">Conciliación de fondo inicial, ventas en efectivo y recuento real en cajón</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span id="badge-cuadre-caja" class="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                🟢 Caja Cuadrada
+              </span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+            <!-- 1. Fondo / Saldo Inicial -->
+            <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">1. Fondo Inicial (Apertura)</label>
+              <div class="relative">
+                <input type="number" id="input-fondo-caja-inicial" step="0.01" min="0" value="100.00" class="w-full py-1.5 px-3 rounded-xl bg-slate-950/80 border border-slate-700 font-black text-base text-amber-400 focus:outline-none focus:border-amber-400">
+                <span class="absolute right-3 top-2 text-xs font-bold text-slate-400">€</span>
+              </div>
+              <small class="text-[10px] text-slate-400 block">Monedas y billetes para cambio</small>
+            </div>
+
+            <!-- 2. Ventas en Efectivo -->
+            <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
+              <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">2. (+) Ventas en Efectivo</span>
+              <strong id="val-ventas-efectivo-arqueo" class="text-xl font-black text-emerald-400 block pt-1">0.00 €</strong>
+              <small class="text-[10px] text-slate-400 block">Recaudado del período</small>
+            </div>
+
+            <!-- 3. Efectivo Teórico Esperado -->
+            <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
+              <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">3. (=) Teórico en Cajón</span>
+              <strong id="val-teorico-cajon-arqueo" class="text-xl font-black text-blue-400 block pt-1">100.00 €</strong>
+              <small class="text-[10px] text-slate-400 block">Fondo inicial + Efectivo cobrado</small>
+            </div>
+
+            <!-- 4. Recuento Real Contado -->
+            <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">4. Recuento Físico (Cierre)</label>
+              <div class="relative">
+                <input type="number" id="input-recuento-real-caja" step="0.01" min="0" placeholder="0.00" class="w-full py-1.5 px-3 rounded-xl bg-slate-950/80 border border-slate-700 font-black text-base text-white focus:outline-none focus:border-emerald-400">
+                <span class="absolute right-3 top-2 text-xs font-bold text-slate-400">€</span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] pt-0.5">
+                <span class="text-slate-400">Diferencia:</span>
+                <strong id="val-descuadre-caja" class="font-bold text-emerald-400">0.00 €</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- TABLA DE HISTÓRICO -->
         <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div class="overflow-x-auto">
@@ -1588,25 +1645,56 @@
         <p>Acerca la tarjeta o contactless del cliente al terminal TPV físico. Confirma el cobro una vez la operación haya sido aprobada por el datáfono.</p>
       </div>
 
-      <!-- PANEL DE STRIPE -->
-      <div id="panel-cobro-stripe" class="hidden p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 text-xs space-y-2">
-        <div class="flex items-center gap-2 font-bold text-sm">
-          <span>🌐</span> <span>Pasarela de Pago Online Stripe</span>
+      <!-- PANEL DE STRIPE (CON QR DINÁMICO Y DETECCIÓN EN VIVO) -->
+      <div id="panel-cobro-stripe" class="hidden p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300 text-xs space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2 font-bold text-sm">
+            <span>🌐</span> <span>Pago Digital Stripe (Móvil / QR)</span>
+          </div>
+          <span id="stripe-qr-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+            ⏳ Esperando generación
+          </span>
         </div>
-        <p>Si el cliente desea pagar desde su propio móvil con tarjeta bancaria, Apple Pay o Google Pay, puedes abrir la sesión de Stripe.</p>
-        <button type="button" id="btn-cobro-abrir-stripe" class="mt-1 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer">
-          🔗 Iniciar Pasarela de Pago Stripe
-        </button>
+
+        <!-- Contenedor del código QR -->
+        <div id="stripe-qr-container" class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-indigo-200 dark:border-slate-800 text-center flex flex-col items-center justify-center space-y-2.5">
+          <div id="stripe-qr-loading" class="py-6 flex flex-col items-center gap-2 text-slate-400">
+            <span class="text-3xl animate-spin">🔄</span>
+            <span class="text-xs font-semibold">Generando sesión bancaria de Stripe...</span>
+          </div>
+          <div id="stripe-qr-display" class="hidden flex flex-col items-center space-y-2">
+            <img id="stripe-qr-img" src="" alt="QR Pago Stripe" class="w-44 h-44 rounded-xl shadow-md border-4 border-white dark:border-slate-800">
+            <p class="text-[11px] font-bold text-slate-600 dark:text-slate-300 max-w-xs">
+              📲 Pide al cliente que enfoque la cámara de su móvil para pagar con <strong>Apple Pay, Google Pay o Tarjeta</strong>.
+            </p>
+          </div>
+        </div>
+
+        <!-- Acciones auxiliares -->
+        <div class="flex items-center justify-between gap-2 pt-1 flex-wrap">
+          <button type="button" id="btn-cobro-abrir-stripe" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition-all cursor-pointer flex items-center gap-1.5">
+            <span>🔗</span> <span>Abrir en este Navegador</span>
+          </button>
+          <button type="button" id="btn-cobro-stripe-manual-override" class="text-[11px] text-slate-400 hover:text-red-500 underline cursor-pointer" title="Solo para registrar si el cliente ya pagó de forma externa">
+            ⚠️ Registro manual (sin conectar a Stripe)
+          </button>
+        </div>
       </div>
 
       <!-- BOTONES DE ACCIÓN -->
-      <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
-        <button type="button" id="btn-cancel-cobro" class="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition-all">
-          Cancelar
-        </button>
-        <button type="button" id="btn-confirmar-cobro" class="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm shadow-md transition-all cursor-pointer flex items-center gap-2">
-          <span>✅</span> <span>Confirmar Cobro & Emitir Ticket</span>
-        </button>
+      <div class="flex items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+        <div id="stripe-waiting-box" class="hidden text-xs font-bold text-indigo-500 flex items-center gap-2">
+          <span class="animate-spin text-sm">⏳</span>
+          <span>Esperando pago del cliente en Stripe...</span>
+        </div>
+        <div class="flex items-center gap-3 ml-auto">
+          <button type="button" id="btn-cancel-cobro" class="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition-all">
+            Cancelar
+          </button>
+          <button type="button" id="btn-confirmar-cobro" class="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm shadow-md transition-all cursor-pointer flex items-center gap-2">
+            <span>✅</span> <span>Confirmar Cobro & Emitir Ticket</span>
+          </button>
+        </div>
       </div>
 
     </div>
@@ -1725,7 +1813,7 @@
   <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
 
-  <script src="main.js?v=2.7.0"></script>
+  <script src="main.js?v=2.8.0"></script>
 </body>
 </html>
 

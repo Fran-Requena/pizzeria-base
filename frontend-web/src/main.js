@@ -44,6 +44,14 @@ const state = {
   // Histórico & Mantenimiento por Fechas
   historicoRango: 'hoy',        // 'hoy' | 'ayer' | 'semana' | 'todos' | 'custom'
   historicoFecha: new Date().toISOString().split('T')[0],
+
+  // Stripe Polling en modal de cobro TPV
+  stripePollingInterval: null,
+  currentStripeCheckoutUrl: null,
+
+  // Arqueo y Cuadre de Caja
+  fondoCajaInicial: parseFloat(localStorage.getItem('pizzeria_fondo_caja') || '100.00'),
+  recuentoRealCaja: null,
 };
 
 
@@ -1776,6 +1784,58 @@ function renderHistoricoTable() {
   if (kpiTarjeta) kpiTarjeta.textContent = `${totalTarjeta.toFixed(2)} €`;
   if (kpiStripe) kpiStripe.textContent = `${totalStripe.toFixed(2)} €`;
 
+  // ARQUEO & CUADRE CONTABLE DE CAJA (FONDO INICIAL + EFECTIVO)
+  const inputFondo = document.getElementById('input-fondo-caja-inicial');
+  if (inputFondo) {
+    if (!inputFondo.value || document.activeElement !== inputFondo) {
+      inputFondo.value = (state.fondoCajaInicial || 100).toFixed(2);
+    }
+  }
+
+  const fondoInicial = parseFloat(inputFondo?.value) || state.fondoCajaInicial || 100;
+  state.fondoCajaInicial = fondoInicial;
+
+  const ventasEfectivoEl = document.getElementById('val-ventas-efectivo-arqueo');
+  const teoricoCajonEl = document.getElementById('val-teorico-cajon-arqueo');
+  const inputRecuento = document.getElementById('input-recuento-real-caja');
+  const descuadreEl = document.getElementById('val-descuadre-caja');
+  const badgeCuadre = document.getElementById('badge-cuadre-caja');
+
+  const teoricoCajon = fondoInicial + totalEfectivo;
+
+  if (ventasEfectivoEl) ventasEfectivoEl.textContent = `${totalEfectivo.toFixed(2)} €`;
+  if (teoricoCajonEl) teoricoCajonEl.textContent = `${teoricoCajon.toFixed(2)} €`;
+
+  const recuentoReal = (inputRecuento && inputRecuento.value !== '') ? parseFloat(inputRecuento.value) : teoricoCajon;
+  state.recuentoRealCaja = recuentoReal;
+
+  const diferencia = recuentoReal - teoricoCajon;
+
+  if (descuadreEl) {
+    if (Math.abs(diferencia) < 0.009) {
+      descuadreEl.className = 'font-bold text-emerald-400';
+      descuadreEl.textContent = '0.00 € (Cuadrada)';
+      if (badgeCuadre) {
+        badgeCuadre.className = 'px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/40';
+        badgeCuadre.textContent = '🟢 Caja Cuadrada';
+      }
+    } else if (diferencia > 0) {
+      descuadreEl.className = 'font-bold text-amber-400';
+      descuadreEl.textContent = `+${diferencia.toFixed(2)} € (Sobra)`;
+      if (badgeCuadre) {
+        badgeCuadre.className = 'px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/40';
+        badgeCuadre.textContent = `🟡 Sobrante: +${diferencia.toFixed(2)} €`;
+      }
+    } else {
+      descuadreEl.className = 'font-bold text-red-400';
+      descuadreEl.textContent = `${diferencia.toFixed(2)} € (Falta)`;
+      if (badgeCuadre) {
+        badgeCuadre.className = 'px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse';
+        badgeCuadre.textContent = `🔴 Faltante: ${diferencia.toFixed(2)} €`;
+      }
+    }
+  }
+
   if (filtradas.length === 0) {
     tbody.innerHTML = `
       <tr>
@@ -1907,6 +1967,12 @@ function imprimirArqueoDiario() {
   const tarj = document.getElementById('kpi-historico-tarjeta')?.textContent || '0.00 €';
   const strp = document.getElementById('kpi-historico-stripe')?.textContent || '0.00 €';
 
+  const fondo = parseFloat(document.getElementById('input-fondo-caja-inicial')?.value || 100).toFixed(2);
+  const teorico = document.getElementById('val-teorico-cajon-arqueo')?.textContent || '0.00 €';
+  const recuentoInput = document.getElementById('input-recuento-real-caja');
+  const recuento = (recuentoInput && recuentoInput.value !== '' ? parseFloat(recuentoInput.value) : parseFloat(teorico)).toFixed(2);
+  const descuadre = document.getElementById('val-descuadre-caja')?.textContent || '0.00 €';
+
   const ticketContent = `
 ========================================
        PIZZERÍA BELLA NAPOLI
@@ -1920,9 +1986,17 @@ Comandas Cerradas:      ${pedidosCount}
 TOTAL FACTURADO:        ${totalFacturado}
 ----------------------------------------
 DESGLOSE POR MODALIDAD DE COBRO:
-  - Efectivo en Cajón:  ${efec}
+  - Cobros en Efectivo: ${efec}
   - Datáfono / TPV:     ${tarj}
-  - Stripe Online:      ${strp}
+  - Stripe Online / QR: ${strp}
+----------------------------------------
+CONCILIACIÓN Y CUADRE DE CAJÓN FÍSICO:
+  (+) Fondo Apertura:   ${fondo} €
+  (+) Cobros Efectivo:  ${efec}
+  (=) Teórico Esperado: ${teorico}
+  (•) Recuento Físico:  ${recuento} €
+  --------------------------------------
+  DIFERENCIA / CUADRE:  ${descuadre}
 ========================================
       Firma Responsable de Turno:
 
@@ -2378,7 +2452,47 @@ function updateCobroMethodPanels() {
   document.getElementById('panel-cobro-efectivo')?.classList.toggle('hidden', method !== 'efectivo_entrega');
   document.getElementById('panel-cobro-datafono')?.classList.toggle('hidden', method !== 'tarjeta_entrega');
   document.getElementById('panel-cobro-stripe')?.classList.toggle('hidden', method !== 'stripe');
+
+  const btnConfirmar = document.getElementById('btn-confirmar-cobro');
+  const stripeWaitingBox = document.getElementById('stripe-waiting-box');
+
+  if (state.stripePollingInterval) {
+    clearInterval(state.stripePollingInterval);
+    state.stripePollingInterval = null;
+  }
+
+  if (method === 'efectivo_entrega') {
+    if (btnConfirmar) {
+      btnConfirmar.classList.remove('hidden');
+      btnConfirmar.className = 'px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm shadow-md transition-all cursor-pointer flex items-center gap-2';
+      btnConfirmar.innerHTML = '<span>💵</span> <span>Confirmar Cobro en Efectivo</span>';
+    }
+    if (stripeWaitingBox) stripeWaitingBox.classList.add('hidden');
+  } else if (method === 'tarjeta_entrega') {
+    if (btnConfirmar) {
+      btnConfirmar.classList.remove('hidden');
+      btnConfirmar.className = 'px-6 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm shadow-md transition-all cursor-pointer flex items-center gap-2';
+      btnConfirmar.innerHTML = '<span>💳</span> <span>Confirmar Cobro con Datáfono</span>';
+    }
+    if (stripeWaitingBox) stripeWaitingBox.classList.add('hidden');
+  } else if (method === 'stripe') {
+    // Si se elige Stripe, ocultamos el botón manual para evitar pagos falsos
+    if (btnConfirmar) btnConfirmar.classList.add('hidden');
+    if (stripeWaitingBox) stripeWaitingBox.classList.remove('hidden');
+
+    if (state.cobroModalOrder) {
+      generarQrStripeCobro(state.cobroModalOrder.id);
+    }
+  }
 }
+
+window.closeCobroModal = function() {
+  if (state.stripePollingInterval) {
+    clearInterval(state.stripePollingInterval);
+    state.stripePollingInterval = null;
+  }
+  document.getElementById('modal-cobro')?.classList.add('hidden');
+};
 
 function updateCambioCalculator() {
   if (!state.cobroModalOrder) return;
@@ -2539,6 +2653,11 @@ window.openTicketModal = async function(orderId, cobroResponseData) {
 
 window.iniciarStripeParaPedido = async function(orderId) {
   try {
+    if (state.currentStripeCheckoutUrl && state.cobroModalOrder && state.cobroModalOrder.id === orderId) {
+      window.open(state.currentStripeCheckoutUrl, '_blank');
+      return;
+    }
+
     showToast('🔄 Conectando con Stripe Checkout...', 'info');
     const res = await fetch(`${API_BASE}/pagos/crear-sesion`, {
       method: 'POST',
@@ -2548,12 +2667,145 @@ window.iniciarStripeParaPedido = async function(orderId) {
 
     const data = await res.json();
     if (res.ok && data.success && data.url) {
-      window.location.href = data.url;
+      state.currentStripeCheckoutUrl = data.url;
+      window.open(data.url, '_blank');
     } else {
       showToast(`⚠️ ${data.message || 'No se pudo iniciar sesión de Stripe.'}`, 'warning');
     }
   } catch (err) {
     showToast(`❌ Error al conectar con Stripe: ${err.message}`, 'error');
+  }
+};
+
+window.generarQrStripeCobro = async function(orderId) {
+  const loadingEl = document.getElementById('stripe-qr-loading');
+  const displayEl = document.getElementById('stripe-qr-display');
+  const imgEl = document.getElementById('stripe-qr-img');
+  const badgeEl = document.getElementById('stripe-qr-status-badge');
+
+  if (loadingEl) {
+    loadingEl.classList.remove('hidden');
+    loadingEl.innerHTML = `
+      <span class="text-3xl animate-spin">🔄</span>
+      <span class="text-xs font-semibold">Generando sesión bancaria de Stripe...</span>
+    `;
+  }
+  if (displayEl) displayEl.classList.add('hidden');
+  if (badgeEl) {
+    badgeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30';
+    badgeEl.textContent = '⏳ Conectando con Stripe...';
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/pagos/crear-sesion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pedido_id: orderId }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.success && data.url) {
+      state.currentStripeCheckoutUrl = data.url;
+
+      if (imgEl) {
+        imgEl.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(data.url)}`;
+      }
+
+      if (loadingEl) loadingEl.classList.add('hidden');
+      if (displayEl) displayEl.classList.remove('hidden');
+
+      if (badgeEl) {
+        badgeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 animate-pulse';
+        badgeEl.textContent = '📲 QR Listo - Esperando pago';
+      }
+
+      iniciarSondeoPagoStripe(orderId);
+    } else {
+      if (loadingEl) {
+        loadingEl.innerHTML = `
+          <div class="py-2 text-center text-amber-500">
+            <span class="text-2xl block mb-1">⚠️</span>
+            <span class="text-xs font-bold block">${data.message || 'Pasarela Stripe no configurada'}</span>
+            <p class="text-[10px] text-slate-400 mt-1">Configura STRIPE_SECRET_KEY en .env para activar cobros online reales.</p>
+          </div>
+        `;
+      }
+      if (badgeEl) {
+        badgeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30';
+        badgeEl.textContent = '❌ Pasarela inactiva';
+      }
+    }
+  } catch (err) {
+    if (loadingEl) {
+      loadingEl.innerHTML = `<span class="text-xs text-red-500 font-bold">Error: ${err.message}</span>`;
+    }
+  }
+};
+
+function iniciarSondeoPagoStripe(orderId) {
+  if (state.stripePollingInterval) clearInterval(state.stripePollingInterval);
+
+  state.stripePollingInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/pedidos/${orderId}`);
+      const data = await res.json();
+
+      if (res.ok && data.success && data.data) {
+        const p = data.data;
+        if (p.estado_pago === 'pagado') {
+          clearInterval(state.stripePollingInterval);
+          state.stripePollingInterval = null;
+
+          showToast(`🎉 ¡Pago de Stripe del Pedido #${orderId} completado con éxito!`, 'success');
+          closeCobroModal();
+
+          await loadPedidosKDS();
+          renderCobrosCrudTable();
+          renderHistoricoTable();
+
+          openTicketModal(orderId);
+        }
+      }
+    } catch (e) {
+      console.error('Error al sondear pago de Stripe:', e);
+    }
+  }, 2500);
+}
+
+window.confirmarCobroManualStripe = async function() {
+  const order = state.cobroModalOrder;
+  if (!order) return;
+
+  try {
+    showToast(`⏳ Registrando apunte administrativo manual...`, 'info');
+    const res = await fetch(`${API_BASE}/pedidos/${order.id}/cobro`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        metodo_pago: 'stripe',
+        importe_entregado: order.total,
+        cambio: 0,
+      }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(`✅ Pedido #${order.id} registrado manualmente como Stripe`, 'success');
+      closeCobroModal();
+
+      order.estado_pago = 'pagado';
+      order.metodo_pago = 'stripe';
+
+      await loadPedidosKDS();
+      renderCobrosCrudTable();
+      renderHistoricoTable();
+      openTicketModal(order.id, data);
+    } else {
+      throw new Error(data.message || 'Error al registrar apunte');
+    }
+  } catch (err) {
+    showToast(`❌ ${err.message}`, 'error');
   }
 };
 
@@ -2843,13 +3095,8 @@ function initEventListeners() {
   });
 
   // Modal de Cobro Presencial
-  document.getElementById('btn-close-cobro-modal')?.addEventListener('click', () => {
-    document.getElementById('modal-cobro').classList.add('hidden');
-  });
-
-  document.getElementById('btn-cancel-cobro')?.addEventListener('click', () => {
-    document.getElementById('modal-cobro').classList.add('hidden');
-  });
+  document.getElementById('btn-close-cobro-modal')?.addEventListener('click', closeCobroModal);
+  document.getElementById('btn-cancel-cobro')?.addEventListener('click', closeCobroModal);
 
   document.querySelectorAll('input[name="cobro-method"]').forEach(radio => {
     radio.addEventListener('change', updateCobroMethodPanels);
@@ -2878,6 +3125,24 @@ function initEventListeners() {
     if (state.cobroModalOrder) {
       iniciarStripeParaPedido(state.cobroModalOrder.id);
     }
+  });
+
+  document.getElementById('btn-cobro-stripe-manual-override')?.addEventListener('click', () => {
+    if (confirm(`⚠️ ¿Deseas registrar este pedido #${state.cobroModalOrder?.id} como pagado por Stripe de forma MANUAL (sin verificar en pasarela)?\n\nUsa esta opción solo si has verificado el cobro externamente.`)) {
+      confirmarCobroManualStripe();
+    }
+  });
+
+  // Arqueo y Cuadre de Caja Inputs
+  document.getElementById('input-fondo-caja-inicial')?.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value) || 0;
+    state.fondoCajaInicial = val;
+    localStorage.setItem('pizzeria_fondo_caja', val.toString());
+    renderHistoricoTable();
+  });
+
+  document.getElementById('input-recuento-real-caja')?.addEventListener('input', () => {
+    renderHistoricoTable();
   });
 
   // Modal de Ticket Fiscal
