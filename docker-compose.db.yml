@@ -14,11 +14,13 @@
 name: pizzeria-db
 
 services:
-  # 1. Base de Datos Relacional (PostgreSQL 16)
+  # 1. Base de Datos Relacional (PostgreSQL 16 - Perfil Local)
   db:
     image: postgres:16-alpine
     container_name: pizzeria-prod-db
     restart: unless-stopped
+    profiles:
+      - local
     environment:
       POSTGRES_USER: ${DB_USER:-pizzeria_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-pizzeria_pass_2026!}
@@ -43,9 +45,9 @@ services:
       - WEB_ROOT=/dbgate
       - SKIP_ALL_AUTH=true
       - CONNECTIONS=pizzeria
-      - LABEL_pizzeria=Pizzería DB Local
-      - SERVER_pizzeria=db
-      - PORT_pizzeria=5432
+      - LABEL_pizzeria=Pizzería DB (${DB_HOST:-AWS RDS})
+      - SERVER_pizzeria=${DB_HOST:-db}
+      - PORT_pizzeria=${DB_PORT:-5432}
       - USER_pizzeria=${DB_USER:-pizzeria_user}
       - PASSWORD_pizzeria=${DB_PASSWORD:-pizzeria_pass_2026!}
       - DATABASE_pizzeria=${DB_NAME:-pizzeria_db}
