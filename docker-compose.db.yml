@@ -44,14 +44,6 @@ services:
     environment:
       - WEB_ROOT=/dbgate
       - SKIP_ALL_AUTH=true
-      - CONNECTIONS=pizzeria
-      - LABEL_pizzeria=Pizzería DB (${DB_HOST:-AWS RDS})
-      - SERVER_pizzeria=${DB_HOST:-db}
-      - PORT_pizzeria=${DB_PORT:-5432}
-      - USER_pizzeria=${DB_USER:-pizzeria_user}
-      - PASSWORD_pizzeria=${DB_PASSWORD:-pizzeria_pass_2026!}
-      - DATABASE_pizzeria=${DB_NAME:-pizzeria_db}
-      - ENGINE_pizzeria=postgres@dbgate-plugin-postgres
     volumes:
       - pizzeria_prod_dbgate:/root/.dbgate
     expose:

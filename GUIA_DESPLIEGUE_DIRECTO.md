@@ -199,21 +199,15 @@ docker network create pizzeria-network
 ---
 
 ### 3.4 Inyectar la Configuración de DbGate con Cifrado SSL
-Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor local `db`. Para que DbGate cargue nuestra conexión a AWS RDS y no busque una base de datos local inexistente:
+Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor local `db`. Para arrancar DbGate y conectarlo de inmediato a AWS RDS:
 
-1. Limpia las variables estáticas locales de `docker-compose.db.yml`:
-   ```bash
-   sed -i '/- CONNECTIONS=pizzeria/,/- ENGINE_pizzeria=/d' docker-compose.db.yml
-   ```
-   *(Esto evita que DbGate intente conectarse al host `db` inexistente y desbloquea el gestor de conexiones con soporte SSL).*
-
-2. Crea el volumen persistente y arranca el contenedor de DbGate:
+1. Crea el volumen persistente y arranca el contenedor de DbGate:
    ```bash
    docker volume create pizzeria_prod_dbgate
-   docker compose -f docker-compose.db.yml up -d --force-recreate dbgate
+   docker compose -f docker-compose.db.yml up -d dbgate
    ```
 
-3. Inyecta la conexión a RDS con `"useSsl": true` y reinicia DbGate:
+2. Inyecta la conexión a RDS con `"useSsl": true` y reinicia DbGate:
    Ejecuta este comando directo de una sola línea (sustituyendo `<ENDPOINT_RDS>` por tu endpoint real):
    ```bash
    echo '{"_id":"pizzeria_rds","engine":"postgres@dbgate-plugin-postgres","server":"<ENDPOINT_RDS>","port":5432,"user":"pizzeria_user","password":"pizzeria_pass_2026!","defaultDatabase":"pizzeria_db","displayName":"AWS RDS Bella Napoli","useSsl":true}' | docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' && docker compose -f docker-compose.db.yml restart dbgate
@@ -222,7 +216,7 @@ Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor loca
    > * Sustituye `<ENDPOINT_RDS>` por tu **Punto de enlace (*Endpoint*) real** copiado en el paso 1.4 (ejemplo: `pizzeria-db.xxxx.us-east-1.rds.amazonaws.com`).
    > * **Sin barra final:** El endpoint debe terminar estrictamente en `.com`, **NUNCA añadas un slash `/` al final**.
 
-5. Comprueba que el archivo se ha guardado correctamente:
+3. Comprueba que el archivo se ha guardado correctamente:
    ```bash
    docker exec pizzeria-prod-dbgate cat /root/.dbgate/connections.jsonl
    ```
