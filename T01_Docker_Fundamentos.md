@@ -17,6 +17,8 @@ En este manual vamos a desmontar y entender la tecnología subyacente que hace f
 4. [El Kit de Supervivencia: Ciclo de Vida y Terminal](#capítulo-4-el-kit-de-supervivencia-ciclo-de-vida-y-terminal)
 5. [Persistencia y Redes Aisladas](#capítulo-5-persistencia-y-redes-aisladas)
 6. [Docker Compose: El Director de Orquesta](#capítulo-6-docker-compose-el-director-de-orquesta)
+7. [Chuleta Rápida de Comandos (Cheat Sheet)](#capítulo-7-chuleta-rápida-de-comandos-cheat-sheet)
+8. [Guía Rápida de Troubleshooting (Resolución de Incidencias)](#capítulo-8-guía-rápida-de-troubleshooting-resolución-de-incidencias)
 
 ---
 
@@ -65,11 +67,11 @@ En lugar de instalar Node.js, Nginx y librerías directamente sobre el sistema o
 Para entender Docker es fundamental dominar esta analogía:
 
 * **La Imagen (La Receta / La Plantilla):**
-  Es un archivo estático, inmutable y de solo lectura. Contiene el sistema operativo base mínimo, las librerías instaladas y tu código fuente. No está "viva" ni consume memoria RAM.
+  Es un archivo estático, inmutable y de solo lectura compuesto por **capas superpuestas** (*layers*). Contiene el sistema operativo base mínimo, las librerías instaladas y tu código fuente. No está "viva" ni consume memoria RAM.
 * **El Contenedor (La Pizza Horneada / La Instancia):**
-  Es la ejecución viva de una imagen en memoria. A partir de una sola imagen de backend podemos levantar 1, 3 o 50 contenedores idénticos funcionando a la vez en distintos puertos.
+  Es la ejecución viva de una imagen en memoria. Añade una fina capa escribible en la parte superior. A partir de una sola imagen de backend podemos levantar 1, 3 o 50 contenedores idénticos funcionando a la vez en distintos puertos.
 
-$$\text{Dockerfile (Código)} \xrightarrow{\text{docker build}} \text{Imagen (Receta estática)} \xrightarrow{\text{docker run}} \text{Contenedor (Proceso en ejecución)}$$
+$$\text{Dockerfile (Código)} \xrightarrow{\text{docker build}} \text{Imagen (Receta estática en capas)} \xrightarrow{\text{docker run}} \text{Contenedor (Proceso en memoria)}$$
 
 ---
 
@@ -77,7 +79,7 @@ $$\text{Dockerfile (Código)} \xrightarrow{\text{docker build}} \text{Imagen (Re
 
 Un `Dockerfile` es el fichero de instrucciones donde le explicamos a Docker cómo debe cocinar la imagen de nuestra aplicación.
 
-A continuación analizamos el archivo real de nuestra pizzería ([backend/Dockerfile](file:///d:/guillermo/IES%20La%20Mola/pizzeria-base/backend/Dockerfile)):
+A continuación analizamos el archivo real de nuestra pizzería ([backend/Dockerfile](backend/Dockerfile)):
 
 ```dockerfile
 # 1. Imagen base ultraligera
@@ -106,14 +108,14 @@ CMD ["node", "src/server.js"]
 
 #### 1. `FROM node:20-alpine`
 * **¿Qué hace?** Establece la imagen base oficial sobre la que construiremos la nuestra.
-* **El truco de ingeniería:** Usamos la etiqueta `alpine`. Alpine Linux es una distribución hiperligera de Linux de tan solo **~5 MB** de peso (frente a los ~1.000 MB que pesa la imagen de Node sobre Debian). Esto reduce los tiempos de descarga y minimiza drásticamente las vulnerabilidades de seguridad (superficie de ataque).
+* **El truco de ingeniería:** Usamos la etiqueta `alpine`. Alpine Linux es una distribución hiperligera de Linux de tan solo **~5 MB** de base. La imagen completa con el motor de Node.js pesa apenas **~140 MB**, frente a los casi **~1.000 MB** (1 GB) que ocupa la versión de Node sobre Debian/Ubuntu estándar. Esto acelera las descargas y reduce drásticamente las vulnerabilidades potenciales de seguridad (*superficie de ataque*).
 
 #### 2. `WORKDIR /app`
-* **¿Qué hace?** Equivale a un comando `mkdir /app && cd /app` dentro del contenedor. Todo lo que ejecutemos a partir de esta línea ocurrirá dentro de esa carpeta.
+* **¿Qué hace?** Equivale a un comando `mkdir -p /app && cd /app` dentro del contenedor. Todo lo que ejecutemos a partir de esta línea ocurrirá dentro de esa carpeta.
 
 #### 3. `COPY package*.json ./` y `4. RUN npm install --omit=dev`
 * **¿Por qué separamos esto en dos pasos? (La magia del *Layer Caching*):**
-  Docker construye las imágenes por capas superpuestas. Si cambiáramos una sola línea de código en `src/server.js` y hubiéramos hecho `COPY . .` al principio, Docker invalidaría la caché y tendría que reinstalar todas las librerías cada vez que compilamos.  
+  Docker construye las imágenes por capas superpuestas en caché. Si cambiáramos una sola línea de código en `src/server.js` y hubiéramos hecho `COPY . .` al principio, Docker invalidaría toda la caché posterior y tendría que reinstalar todas las librerías con npm cada vez que compilamos.  
   Al copiar **solo** el archivo `package.json` primero, Docker detecta si has añadido librerías nuevas o no:
   * Si no has tocado dependencias $\rightarrow$ Reutiliza la capa ya descargada en **0.1 segundos**.
 * El flag `--omit=dev` evita instalar herramientas que solo se usan en desarrollo local, ahorrando espacio en disco.
@@ -122,12 +124,12 @@ CMD ["node", "src/server.js"]
 * Copia el resto del código de nuestra API (controladores, rutas, modelos) desde la máquina anfitriona hacia `/app` dentro del contenedor.
 
 #### 6. `EXPOSE 3000`
-* Es una instrucción documental de metadatos. Informa a Docker y a otros desarrolladores de que este contenedor escucha tráfico de red por el puerto 3000.
+* Es una instrucción documental de metadatos. Informa a Docker y a otros desarrolladores de que este contenedor escucha tráfico de red por el puerto 3000. No publica el puerto por sí sola hacia el exterior (eso se hace con `-p` en runtime o en Docker Compose).
 
 #### 7. `CMD ["node", "src/server.js"]`
 * **La gran diferencia entre `RUN` y `CMD`:**
-  * `RUN` se ejecuta **durante la construcción de la imagen** (`docker build`).
-  * `CMD` es el comando que se ejecuta **cuando el contenedor arranca** (`docker run`). En nuestro caso, arranca el servidor web Express de la pizzería.
+  * `RUN` se ejecuta **durante la construcción de la imagen** (`docker build`). Escribe cambios permanentes en las capas de la imagen.
+  * `CMD` es el comando por defecto que se ejecuta **cuando el contenedor arranca** (`docker run`). En nuestro caso, arranca el servidor web Express de la pizzería.
 
 ---
 
@@ -161,14 +163,17 @@ stateDiagram-v2
   ```bash
   docker ps -a
   ```
-  > 💡 **Tip de diagnóstico:** Si ves un estado `Exited (1)` o `Exited (137)`, sabrás que el proceso crasheó o fue eliminado por el sistema por falta de memoria RAM (*Out Of Memory*).
+  > 💡 **Tip de diagnóstico de códigos de salida:**
+  > * `Exited (0)`: Terminó correctamente (su tarea finalizó con éxito).
+  > * `Exited (1)`: Error en la aplicación (excepción no controlada en Node.js, fallo de sintaxis, etc.).
+  > * `Exited (137)`: Señal `SIGKILL` (128 + 9). Ocurre cuando el kernel de Linux mata el contenedor por falta de memoria RAM (*OOMKilled - Out Of Memory*) o cuando alguien ejecutó `docker kill` / apagado forzoso.
 
 ---
 
 ### 2. Control del Ciclo de Vida: `docker stop`, `docker start` y `docker rm`
 
 * **`docker stop <nombre>`:**  
-  Envía una señal de apagado ordenado (`SIGTERM`) al proceso para que cierre conexiones con la base de datos limpiamente antes de detenerse:
+  Envía una señal de apagado ordenado (`SIGTERM`) al proceso para que cierre conexiones con la base de datos limpiamente. Si tras 10 segundos el proceso no ha terminado de cerrarse, Docker envía un `SIGKILL` forzoso.
   ```bash
   docker stop pizzeria-prod-backend
   ```
@@ -197,19 +202,18 @@ docker logs pizzeria-prod-backend --tail 15
 Muestra las últimas 15 líneas registradas en el servidor.
 
 #### Caso de uso real: Auditoría del Webhook de Stripe en vivo
-Cuando un cliente paga con tarjeta en Stripe, los servidores de Stripe lanzan una petición HTTP asíncrona hacia nuestro servidor (`POST /api/pagos/webhook`). ¿Cómo sabemos si el evento ha llegado y si la firma criptográfica ha sido validada?
+Cuando un cliente paga con tarjeta en Stripe, los servidores de Stripe lanzan una petición HTTP asíncrona hacia nuestro servidor (`POST /api/pagos/webhook`). ¿Cómo sabemos si el evento ha llegado y si la base de datos ha actualizado el pedido?
 
 Añadimos el flag **`-f`** (*follow* / seguir en directo):
 ```bash
 docker logs pizzeria-prod-backend -f
 ```
-La terminal se quedará a la escucha. En el instante exacto en que completes el pago en Stripe, verás desfilar por tu pantalla:
+La terminal se quedará a la escucha. En el instante exacto en que completes el pago en Stripe, verás aparecer en tiempo real el registro programado en nuestro [pagosController.js](backend/src/controllers/pagosController.js#L176):
 ```text
-📥 [Stripe Webhook] Evento recibido: checkout.session.completed
-✔ Firma criptográfica verificada con éxito
-🍕 [Pedido #104] Estado de pago actualizado a 'PAGADO' en PostgreSQL
+✅ [Stripe Webhook] Pedido #104 marcado como PAGADO tras confirmación de Stripe.
 ```
-*(Para salir de la visualización en vivo, pulsa `Ctrl + C`).*
+*(Y si las claves del webhook estuvieran mal configuradas en el `.env`, verías de inmediato el aviso: `⚠️ [Stripe Webhook] Error en la firma del webhook: ...`).*  
+Para salir de la visualización en vivo, pulsa `Ctrl + C`.
 
 ---
 
@@ -232,7 +236,8 @@ Imagina que un cliente entra a la web y recibe un error `502 Bad Gateway` al ped
    ```bash
    docker exec -it pizzeria-prod-web sh
    ```
-   > ⚠️ **Atención técnica con Alpine:** Como Nginx corre sobre Alpine Linux ultraligero, **no tiene `bash` instalado**. Debemos invocar su shell nativo: **`sh`**.
+   > 💡 **Nota sobre el intérprete de comandos en Alpine:**  
+   > Las imágenes base puras de `nginx:alpine` no traen `bash` instalado por defecto (solo traen `/bin/sh`). Sin embargo, en el [Dockerfile del Frontend Web](frontend-web/Dockerfile#L7) instalamos explícitamente `bash` con `RUN apk add --no-cache openssl bash` para dar soporte a nuestro script de certificados SSL. Por tanto, en nuestro contenedor funcionan tanto `sh` como `bash`. Aun así, acostumbrarse a invocar `sh` es la mejor práctica en el ecosistema Alpine.
 
 2. **Verificamos la sintaxis del archivo de configuración de Nginx:**
    ```sh
@@ -275,7 +280,7 @@ graph LR
 En redes físicas tradicionales, configurarías IPs fijas (ej. `192.168.1.50`). En Docker eso es una mala práctica porque las IPs de los contenedores son dinámicas: cada vez que un contenedor se reinicia o se recompila, Docker le asigna una IP diferente (ej. `172.18.0.3`, `172.18.0.4`).
 
 Para solucionar esto, Docker incluye un **servidor DNS interno integrado**:
-* En el archivo de configuración real de nuestro proxy ([frontend-web/nginx.conf](file:///d:/guillermo/IES%20La%20Mola/pizzeria-base/frontend-web/nginx.conf)):
+* En el archivo de configuración real de nuestro proxy ([frontend-web/nginx.conf](frontend-web/nginx.conf)):
   ```nginx
   location ^~ /api/ {
       proxy_pass http://backend:3000/api/;
@@ -299,7 +304,7 @@ Para conservar datos o compartir archivos con el host disponemos de dos mecanism
 | **Punto de montaje (*Bind Mount*)** | Una ruta exacta de tu disco duro físico (ej. `~/pizzeria-base/.htpasswd`). | Archivos de configuración que queremos editar desde fuera sin reconstruir la imagen. |
 
 #### Caso de uso real en la Pizzería: El Bind Mount del `.htpasswd`
-En la **Práctica 5**, para proteger el panel `/dbgate/` con usuario y contraseña sin tener que reconstruir la imagen de Nginx cada vez que cambiamos una clave, usamos un *Bind Mount* en [docker-compose.app.yml](file:///d:/guillermo/IES%20La%20Mola/pizzeria-base/docker-compose.app.yml):
+En la **Práctica 5 (Hardening y Ciberseguridad)**, para proteger el panel `/dbgate/` con usuario y contraseña sin tener que reconstruir la imagen de Nginx cada vez que cambiamos una clave, añadiréis un *Bind Mount* en [docker-compose.app.yml](docker-compose.app.yml):
 
 ```yaml
   frontend-web:
@@ -311,7 +316,7 @@ En la **Práctica 5**, para proteger el panel `/dbgate/` con usuario y contrase�
 
 * **`./.htpasswd`:** El archivo que creamos en el Ubuntu de nuestra EC2 con `openssl`.
 * **`:/etc/nginx/.htpasswd`:** La ruta dentro del contenedor donde Nginx irá a buscarlo.
-* **`:ro` (*Read-Only*):** **Principio de Mínimo Privilegio.** Nginx solo necesita leer las contraseñas. Si alguien vulnerara el servidor web, no podría alterar el archivo de claves porque está montado en solo lectura.
+* **`:ro` (*Read-Only*):** **Principio de Mínimo Privilegio.** Nginx solo necesita leer las contraseñas. Si alguien vulnerara el servidor web, no podría alterar el archivo de claves porque el sistema operativo lo bloquea en solo lectura.
 
 ---
 
@@ -323,7 +328,8 @@ Hasta ahora hemos visto comandos sueltos (`docker run`, `docker build`). Si tuvi
 # ¡La forma propensa a errores que nadie usa en producción!
 docker run -d --name backend --network pizzeria-network -e DB_HOST=... pizzeria-backend
 docker run -d --name web -p 80:80 --network pizzeria-network pizzeria-web
-docker run -d --name tunnel --network pizzeria-network cloudflared ...
+docker run -d --name qr -network pizzeria-network pizzeria-qr
+docker run -d --name tunnel --network pizzeria-network cloudflared tunnel run ...
 ```
 
 **Docker Compose** resuelve esto aplicando el concepto de **Infraestructura como Código (IaC)**: defines todos los servicios de tu aplicación en un único archivo YAML reproducible y versionable en Git.
@@ -332,13 +338,13 @@ docker run -d --name tunnel --network pizzeria-network cloudflared ...
 
 ### Destripando nuestro `docker-compose.app.yml`
 
-A continuación analizamos la estructura real de nuestra capa de aplicación:
+A continuación analizamos la estructura real de nuestra capa de aplicación ([docker-compose.app.yml](docker-compose.app.yml)):
 
 ```yaml
 name: pizzeria-app
 
 services:
-  # 1. API REST en Node.js
+  # 1. API REST en Node.js (Construida a medida con Dockerfile)
   backend:
     build:
       context: ./backend
@@ -353,7 +359,7 @@ services:
     networks:
       - pizzeria-network
 
-  # 2. Servidor Web y Proxy Inverso
+  # 2. Servidor Web y Proxy Inverso Nginx
   frontend-web:
     build:
       context: ./frontend-web
@@ -366,17 +372,38 @@ services:
     networks:
       - pizzeria-network
 
+  # 3. Túnel Cloudflare Zero Trust (Usa imagen precompilada del registro oficial)
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: pizzeria-prod-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - frontend-web
+    networks:
+      - pizzeria-network
+
 networks:
   pizzeria-network:
     external: true
 ```
 
 #### Elementos clave a entender:
-* **`build`:** Le dice a Compose dónde está el `Dockerfile` para compilar la imagen si no existe.
-* **`${VARIABLE:-valor_defecto}`:** Inyección limpia desde el archivo `.env`. Si la variable no está en el `.env`, toma el valor por defecto tras los dos puntos.
-* **`ports: "80:80"`:** Mapea el puerto del Host (EC2) al del contenedor (`Host:Contenedor`). Solo Nginx expone el puerto 80 hacia fuera; el backend queda protegido dentro de la red interna.
-* **`depends_on`:** Marca el orden de arranque: Nginx no arranca hasta que el backend esté listo.
-* **`networks: external: true`:** Indica que la red `pizzeria-network` ya fue creada previamente (por la capa de base de datos) y se comparte entre ambos entornos.
+* **`build` vs `image`:**  
+  * `backend` y `frontend-web` usan `build:` porque son código nuestro y Docker debe cocinar su imagen a partir de su `Dockerfile`.
+  * `tunnel` usa `image: cloudflare/cloudflared:latest` porque es una herramienta de terceros lista para descargar directamente desde Docker Hub.
+* **`restart: unless-stopped` (Resiliencia en Producción):**  
+  Si la máquina EC2 se reinicia por mantenimiento de AWS o si el proceso del backend se cae por un error inesperado, Docker lo levantará automáticamente. Solo permanecerá apagado si tú lo detienes intencionadamente con `docker stop`.
+* **`${VARIABLE:-valor_defecto}`:**  
+  Inyección limpia desde el archivo `.env`. Si la variable no está en el `.env`, toma el valor por defecto tras los dos puntos.
+* **`ports: "80:80"`:**  
+  Mapea el puerto del Host (EC2) al del contenedor (`Host:Contenedor`). Solo Nginx expone el puerto 80 hacia fuera; el backend queda protegido y accesible únicamente por la red interna.
+* **`depends_on` (¡Atención: orden de arranque, no de salud!):**  
+  Define el orden en el que Docker lanza los contenedores (primero backend, luego web, luego tunnel). **No espera** a que la base de datos o Node.js hayan terminado de compilar o conectar (para eso se usan *Healthchecks* avanzados).
+* **`networks: external: true`:**  
+  Indica que la red `pizzeria-network` ya fue creada previamente (por la capa de base de datos) y se comparte entre ambos entornos.
 
 ---
 
@@ -395,3 +422,46 @@ docker compose -f docker-compose.app.yml up -d backend
 # 4. Detener y eliminar todos los contenedores y redes de forma limpia
 docker compose -f docker-compose.app.yml down
 ```
+
+---
+
+## Capítulo 7: Chuleta Rápida de Comandos (Cheat Sheet)
+
+Guarda esta tabla como referencia rápida para la terminal de AWS EC2:
+
+| Acción deseada | Comando exacto | Para qué sirve |
+| :--- | :--- | :--- |
+| **Ver contenedores activos** | `docker ps` | Comprueba si tus servicios están encendidos (`Up`). |
+| **Ver todos (incluidos caídos)** | `docker ps -a` | Localiza qué contenedor ha muerto (`Exited (1)`). |
+| **Ver logs en tiempo real** | `docker logs -f <nombre>` | Depura peticiones entrantes, errores y eventos en vivo. |
+| **Ver últimas N líneas de log** | `docker logs --tail 20 <nombre>` | Consulta el arranque reciente sin saturar la pantalla. |
+| **Entrar dentro del contenedor** | `docker exec -it <nombre> sh` | Abre una terminal interactiva para probar red o archivos. |
+| **Levantar stack con Compose** | `docker compose -f <fichero> up -d --build` | Compila cambios de código y arranca todo en segundo plano. |
+| **Recargar variables del `.env`** | `docker compose -f <fichero> up -d <servicio>` | Recrea el contenedor aplicando las nuevas variables. |
+| **Apagar stack completo** | `docker compose -f <fichero> down` | Detiene y elimina contenedores y redes de forma ordenada. |
+| **Ver consumo de CPU y RAM** | `docker stats` | Monitoriza recursos en tiempo real de cada contenedor. |
+
+---
+
+## Capítulo 8: Guía Rápida de Troubleshooting (Resolución de Incidencias)
+
+Tres situaciones reales que te ocurrirán en producción y cómo resolverlas en 10 segundos:
+
+### 1. Error `530` / `Error 1033` en Cloudflare nada más arrancar
+* **Síntoma:** Abres tu enlace `https://dam-XX.guillermofoix.org` y sale una pantalla de error de Cloudflare (*Argo Tunnel Error*).
+* **Causa:** El contenedor del túnel acaba de arrancar y necesita entre 15 y 30 segundos para resolver DNS y registrar sus 4 conexiones Anycast con los servidores de Cloudflare.
+* **Solución:** Revisa con `docker logs pizzeria-prod-tunnel -f`. En cuanto veas `Registered tunnel connection...`, recarga la web y cargará de inmediato.
+
+### 2. Error *"Failed to fetch"* al tramitar pedidos
+* **Síntoma:** Pulsas *Confirmar y Enviar Pedido* en la web y salta un aviso rojo `Failed to fetch`.
+* **Causa:** El navegador lanzó `POST /api/pedidos` pero el backend o Nginx estaban reiniciándose en ese milisegundo, o el túnel perdió conexión temporal.
+* **Solución:** Comprueba que el backend esté arriba con `docker ps`. Si acaba de reiniciar, espera 10 segundos y pulsa `Ctrl + F5` en el navegador.
+
+### 3. Edito el archivo `.env` pero el servidor no se entera
+* **Síntoma:** Has añadido tus claves de Stripe en el `.env` y el backend sigue diciendo `Pasarela inactiva`.
+* **Causa:** Has usado `docker restart` o `docker compose restart`. Un reinicio simple **no** lee de nuevo el archivo `.env`.
+* **Solución:** Ejecuta siempre:
+  ```bash
+  docker compose -f docker-compose.app.yml up -d backend
+  ```
+  Compose detectará que el archivo de variables ha cambiado, destruirá el contenedor viejo y creará uno nuevo con las claves inyectadas.
