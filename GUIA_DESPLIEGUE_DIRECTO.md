@@ -224,24 +224,26 @@ Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor loca
 
 ---
 
-### 3.5 (Opcional) Proteger el acceso a `/dbgate/` con HTTP Basic Auth
-Para que nadie pueda acceder al panel de administración sin credenciales web:
+### 3.5 Proteger el acceso a `/dbgate/` con HTTP Basic Auth (Obligatorio por Seguridad)
 
-1. Genera el archivo `.htpasswd`:
+Como DbGate otorga acceso administrativo directo a todas las tablas de PostgreSQL (incluyendo clientes, comandas y pedidos), en un entorno de producción accesible a través de Internet **es una vulnerabilidad crítica dejarlo abierto sin autenticación**:
+
+1. Genera el archivo `.htpasswd` con las credenciales de administración (`admin` / `PizzeriaAdmin_2026!`):
    ```bash
    echo "admin:$(openssl passwd -apr1 'PizzeriaAdmin_2026!')" > .htpasswd
    chmod 644 .htpasswd
    ```
 
-2. Activa la autenticación en `frontend-web/nginx.conf`:
+2. Activa la directiva de autenticación en `frontend-web/nginx.conf`:
    ```bash
-   sed -i '/location \/dbgate\/ {/a \        auth_basic "Acceso Restringido - Administracion";\n        auth_basic_user_file /etc/nginx/.htpasswd;' frontend-web/nginx.conf
+   sed -i '/location .*\/dbgate\/ {/a \        auth_basic "Acceso Restringido - Administracion";\n        auth_basic_user_file /etc/nginx/.htpasswd;' frontend-web/nginx.conf
    ```
 
-3. Monta el archivo `.htpasswd` en `docker-compose.app.yml`:
+3. Monta el archivo `.htpasswd` dentro del contenedor web en `docker-compose.app.yml`:
    ```bash
    sed -i '/container_name: pizzeria-prod-web/a \    volumes:\n      - ./.htpasswd:/etc/nginx/.htpasswd:ro' docker-compose.app.yml
    ```
+
 
 ---
 
