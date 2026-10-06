@@ -15,8 +15,8 @@ En este manual vamos a desmontar y entender la tecnología subyacente que hace f
 2. [Imágenes vs. Contenedores (La Receta y la Pizza)](#capítulo-2-imágenes-vs-contenedores-la-receta-y-la-pizza)
 3. [Destripando el Proyecto: El Dockerfile del Backend](#capítulo-3-destripando-el-proyecto-el-dockerfile-del-backend)
 4. [El Kit de Supervivencia: Ciclo de Vida y Terminal](#capítulo-4-el-kit-de-supervivencia-ciclo-de-vida-y-terminal)
-5. *Persistencia y Redes Aisladas (Próximamente)*
-6. *Docker Compose: El Director de Orquesta (Próximamente)*
+5. [Persistencia y Redes Aisladas](#capítulo-5-persistencia-y-redes-aisladas)
+6. [Docker Compose: El Director de Orquesta](#capítulo-6-docker-compose-el-director-de-orquesta)
 
 ---
 
@@ -255,6 +255,143 @@ Imagina que un cliente entra a la web y recibe un error `502 Bad Gateway` al ped
 
 ---
 
-## Próximos Capítulos (Hoja de Ruta)
-* **Capítulo 5: Persistencia y Redes Aisladas:** Volúmenes Docker vs *Bind Mounts* (`.htpasswd`), redes tipo *Bridge* (`pizzeria-network`) y resolución DNS interna por nombre de servicio.
-* **Capítulo 6: Docker Compose — El Director de Orquesta:** Orquestación multicontenedor, mapeo de puertos, inyección de variables de entorno y gestión desacoplada (`docker-compose.app.yml` y `docker-compose.db.yml`).
+## Capítulo 5: Persistencia y Redes Aisladas
+
+### 1. Redes Internas: El DNS Mágico de Docker
+Por defecto, cada contenedor que creas nace en su propio ecosistema de red aislado. Si dos contenedores necesitan comunicarse, debemos conectarlos a una misma red virtual (en nuestro caso, una red de tipo *Bridge* llamada `pizzeria-network`).
+
+```mermaid
+graph LR
+    subgraph RED ["Red Interna: pizzeria-network (Bridge)"]
+        Nginx["pizzeria-prod-web<br/>(Nginx Proxy)"]
+        Backend["pizzeria-prod-backend<br/>(Node.js :3000)"]
+    end
+
+    Cliente((Cliente Web)) -->|HTTP :80| Nginx
+    Nginx -->|DNS interno: 'http://backend:3000'| Backend
+```
+
+#### ¿Por qué no usamos direcciones IP? (El DNS interno)
+En redes físicas tradicionales, configurarías IPs fijas (ej. `192.168.1.50`). En Docker eso es una mala práctica porque las IPs de los contenedores son dinámicas: cada vez que un contenedor se reinicia o se recompila, Docker le asigna una IP diferente (ej. `172.18.0.3`, `172.18.0.4`).
+
+Para solucionar esto, Docker incluye un **servidor DNS interno integrado**:
+* En el archivo de configuración real de nuestro proxy ([frontend-web/nginx.conf](file:///d:/guillermo/IES%20La%20Mola/pizzeria-base/frontend-web/nginx.conf)):
+  ```nginx
+  location ^~ /api/ {
+      proxy_pass http://backend:3000/api/;
+  }
+  ```
+* Nginx no tiene ni idea de qué IP tiene el backend. Simplemente le pide datos a `http://backend:3000`.
+* El motor de Docker intercepta la palabra `backend` y la traduce automáticamente y al vuelo a la IP privada que tenga el contenedor en ese instante.
+
+---
+
+### 2. Persistencia de Datos: Volúmenes vs. Bind Mounts
+
+#### El gran problema: Los contenedores son "amnésicos"
+El sistema de archivos de un contenedor es efímero. Cuando un contenedor escribe datos (un archivo subido, un log o una tabla), lo guarda en una capa temporal de lectura/escritura. Si ejecutas `docker rm`, **todo lo que había dentro desaparece para siempre**.
+
+Para conservar datos o compartir archivos con el host disponemos de dos mecanismos:
+
+| Mecanismo | ¿Dónde vive? | Caso de uso ideal |
+| :--- | :--- | :--- |
+| **Volumen gestionado (*Named Volume*)** | Carpeta interna protegida y gestionada por Docker (`/var/lib/docker/volumes/...`). | Bases de datos locales pesadas. *(En nuestra pizzería delegamos la persistencia en AWS RDS por alta disponibilidad y seguridad).* |
+| **Punto de montaje (*Bind Mount*)** | Una ruta exacta de tu disco duro físico (ej. `~/pizzeria-base/.htpasswd`). | Archivos de configuración que queremos editar desde fuera sin reconstruir la imagen. |
+
+#### Caso de uso real en la Pizzería: El Bind Mount del `.htpasswd`
+En la **Práctica 5**, para proteger el panel `/dbgate/` con usuario y contraseña sin tener que reconstruir la imagen de Nginx cada vez que cambiamos una clave, usamos un *Bind Mount* en [docker-compose.app.yml](file:///d:/guillermo/IES%20La%20Mola/pizzeria-base/docker-compose.app.yml):
+
+```yaml
+  frontend-web:
+    container_name: pizzeria-prod-web
+    # ...
+    volumes:
+      - ./.htpasswd:/etc/nginx/.htpasswd:ro
+```
+
+* **`./.htpasswd`:** El archivo que creamos en el Ubuntu de nuestra EC2 con `openssl`.
+* **`:/etc/nginx/.htpasswd`:** La ruta dentro del contenedor donde Nginx irá a buscarlo.
+* **`:ro` (*Read-Only*):** **Principio de Mínimo Privilegio.** Nginx solo necesita leer las contraseñas. Si alguien vulnerara el servidor web, no podría alterar el archivo de claves porque está montado en solo lectura.
+
+---
+
+## Capítulo 6: Docker Compose: El Director de Orquesta
+
+### De lo manual a la Infraestructura como Código (IaC)
+Hasta ahora hemos visto comandos sueltos (`docker run`, `docker build`). Si tuviéramos que arrancar nuestra pizzería a mano, tendríamos que escribir en la terminal una ristra de comandos interminable conectando puertos, variables y redes:
+```bash
+# ¡La forma propensa a errores que nadie usa en producción!
+docker run -d --name backend --network pizzeria-network -e DB_HOST=... pizzeria-backend
+docker run -d --name web -p 80:80 --network pizzeria-network pizzeria-web
+docker run -d --name tunnel --network pizzeria-network cloudflared ...
+```
+
+**Docker Compose** resuelve esto aplicando el concepto de **Infraestructura como Código (IaC)**: defines todos los servicios de tu aplicación en un único archivo YAML reproducible y versionable en Git.
+
+---
+
+### Destripando nuestro `docker-compose.app.yml`
+
+A continuación analizamos la estructura real de nuestra capa de aplicación:
+
+```yaml
+name: pizzeria-app
+
+services:
+  # 1. API REST en Node.js
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pizzeria-prod-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: ${BACKEND_PORT:-3000}
+      DB_HOST: ${DB_HOST:-db}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+    networks:
+      - pizzeria-network
+
+  # 2. Servidor Web y Proxy Inverso
+  frontend-web:
+    build:
+      context: ./frontend-web
+    container_name: pizzeria-prod-web
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      - backend
+    networks:
+      - pizzeria-network
+
+networks:
+  pizzeria-network:
+    external: true
+```
+
+#### Elementos clave a entender:
+* **`build`:** Le dice a Compose dónde está el `Dockerfile` para compilar la imagen si no existe.
+* **`${VARIABLE:-valor_defecto}`:** Inyección limpia desde el archivo `.env`. Si la variable no está en el `.env`, toma el valor por defecto tras los dos puntos.
+* **`ports: "80:80"`:** Mapea el puerto del Host (EC2) al del contenedor (`Host:Contenedor`). Solo Nginx expone el puerto 80 hacia fuera; el backend queda protegido dentro de la red interna.
+* **`depends_on`:** Marca el orden de arranque: Nginx no arranca hasta que el backend esté listo.
+* **`networks: external: true`:** Indica que la red `pizzeria-network` ya fue creada previamente (por la capa de base de datos) y se comparte entre ambos entornos.
+
+---
+
+### Comandos Clave del Director de Orquesta
+
+```bash
+# 1. Levantar y compilar toda la infraestructura en segundo plano (-d)
+docker compose -f docker-compose.app.yml up -d --build
+
+# 2. Ver el estado de todos los servicios coordinados
+docker compose -f docker-compose.app.yml ps
+
+# 3. Recrear un solo servicio tras editar el .env (¡El comando correcto para recargar variables!)
+docker compose -f docker-compose.app.yml up -d backend
+
+# 4. Detener y eliminar todos los contenedores y redes de forma limpia
+docker compose -f docker-compose.app.yml down
+```
