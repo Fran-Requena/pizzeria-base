@@ -80,7 +80,7 @@ Para que los servidores de Stripe puedan avisar de forma asíncrona a tu base de
 
 1. Tras copiar la clave, es posible que Stripe haya contraído el menú lateral izquierdo. Si es así, vuelve a hacer clic en **`</> Desarrolladores`** abajo a la izquierda.
 2. Haz clic en la pestaña **Webhooks**.
-3. Al ser tu primer webhook, la pantalla central estará vacía. Haz clic en el botón morado **"+ Añade un destino"** y selecciona **"Punto de conexión de webhook"** *(ignora cualquier opción de "oyente local")*. Se abrirá un asistente de 3 pantallas:
+3. Al ser tu primer webhook, la pantalla central estará vacía. Haz clic en el botón morado **"+ Añade un destino"**. Se abrirá directamente un asistente de 3 pantallas:
    * **Pantalla 1 (Elegir eventos):**
      * En el bloque *"Ámbito del destino"*, asegúrate de que **"Tu cuenta"** está seleccionado.
      * Ignora el desplegable de versión de la API y haz scroll hacia abajo hasta la barra de búsqueda de eventos.
