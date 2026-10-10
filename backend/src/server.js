@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -98,12 +100,20 @@ app.use((err, req, res, next) => {
 });
 
 // ─── Arranque del Servidor ────────────────────────────────────────────────
-app.listen(PORT, async () => {
-  console.log(`========================================================`);
-  console.log(`🚀 API Pizzería escuchando en http://0.0.0.0:${PORT}`);
-  console.log(`🍕 Endpoints disponibles: /api/pizzas | /api/pedidos | /api/mesas`);
-  console.log(`========================================================`);
-  
-  // Probar conexión con la base de datos
-  await testConnection();
-});
+// Solo se abre el puerto al ejecutar este archivo (node src/server.js, nodemon o Docker).
+// Los tests importan `app` sin arrancar el servidor.
+const ejecutadoDirectamente = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (ejecutadoDirectamente) {
+  app.listen(PORT, async () => {
+    console.log(`========================================================`);
+    console.log(`🚀 API Pizzería escuchando en http://0.0.0.0:${PORT}`);
+    console.log(`🍕 Endpoints disponibles: /api/pizzas | /api/pedidos | /api/mesas`);
+    console.log(`========================================================`);
+
+    // Probar conexión con la base de datos
+    await testConnection();
+  });
+}
+
+export default app;
