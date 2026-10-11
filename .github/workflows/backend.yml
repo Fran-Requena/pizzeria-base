@@ -1,0 +1,82 @@
+# ==============================================================================
+# CI DEL BACKEND (carpeta backend/)
+# ==============================================================================
+# - Levanta un PostgreSQL temporal (misma imagen que los docker-compose).
+# - Carga database/init.sql para comprobar que el script es válido.
+# - npm ci y npm test (node:test). Los tests reinician el esquema por su cuenta.
+#
+# Sin secretos: Stripe se sustituye por un doble de pruebas y la base de datos
+# es local al runner (DB_HOST=localhost, la protección de los tests lo permite).
+# ==============================================================================
+
+name: Backend
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'backend/**'
+      - 'database/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'database/**'
+      - '.github/workflows/backend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probar:
+    name: Tests del backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pizzeria_test
+          POSTGRES_PASSWORD: pizzeria_test
+          POSTGRES_DB: pizzeria_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pizzeria_test -d pizzeria_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # Credenciales de una base de datos desechable, no son secretos
+    env:
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      DB_USER: pizzeria_test
+      DB_PASSWORD: pizzeria_test
+      DB_NAME: pizzeria_test
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v5.0.0
+
+      - name: Instalar Node 20 (el del Dockerfile del backend)
+        uses: actions/setup-node@v5.0.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Cargar database/init.sql
+        env:
+          PGPASSWORD: pizzeria_test
+        run: psql -v ON_ERROR_STOP=1 -h localhost -U pizzeria_test -d pizzeria_test -f database/init.sql
+
+      - name: Instalar dependencias
+        working-directory: backend
+        run: npm ci
+
+      - name: Ejecutar los tests
+        working-directory: backend
+        run: npm test
