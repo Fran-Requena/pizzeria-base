@@ -138,6 +138,33 @@ describe('POST /api/pagos/crear-sesion', () => {
     assert.equal(p.estado, 'pendiente');
   });
 
+  test('crear-sesion cobra en Stripe el total del pedido con su descuento, no la suma de las líneas a precio completo', async () => {
+    const id = await crearPedido();
+    // 32.50 a precio de carta; descuento de 3.25 aplicado al total
+    await pool.query(`UPDATE pedidos SET total = 29.25 WHERE id = $1`, [id]);
+
+    const r = await crearSesion({ pedido_id: id });
+    assert.equal(r.estado, 200);
+
+    const { params } = control.llamadasA('checkout.sessions.create')[0];
+    assert.equal(params.line_items.length, 1);
+    assert.equal(params.line_items[0].price_data.product_data.name, `Pedido #${id}`);
+    assert.equal(params.line_items[0].price_data.unit_amount, 2925);
+    assert.equal(params.line_items[0].quantity, 1);
+    assert.equal(control.sesiones.get(r.json.sessionId).amount_total, 2925);
+  });
+
+  test('responde 400 si el total es inferior al mínimo de Stripe (0.50 €) y no llama a Stripe', async () => {
+    const id = await crearPedido();
+    await pool.query(`UPDATE pedidos SET total = 0.30 WHERE id = $1`, [id]);
+
+    const r = await crearSesion({ pedido_id: id });
+    assert.equal(r.estado, 400);
+    assert.equal(r.json.success, false);
+    assert.match(r.json.message, new RegExp(`^El total del pedido #${id} \\(0\\.30 €\\) es inferior al mínimo de 0\\.50 €`));
+    assert.equal(control.llamadas.length, 0);
+  });
+
   test('responde 500 si Stripe falla y no modifica el pedido', async () => {
     const id = await crearPedido();
     control.crear = () => {

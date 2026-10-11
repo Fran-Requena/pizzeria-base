@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { query } from '../config/db.js';
+import { aCentimos, formatearEuros, lineasParaStripe, MINIMO_STRIPE_CENTIMOS } from '../utils/importesStripe.js';
 
 // Inicialización condicional y tolerante (Feature Flag)
 const stripeKey = process.env.STRIPE_SECRET_KEY ? process.env.STRIPE_SECRET_KEY.trim() : null;
@@ -102,18 +103,15 @@ export const crearSesionCheckout = async (req, res) => {
       });
     }
 
-    // 3. Transformar los ítems al formato requerido por Stripe (precios en céntimos enteros)
-    const lineItems = lineasRes.rows.map(linea => ({
-      price_data: {
-        currency: 'eur',
-        product_data: {
-          name: linea.nombre,
-          description: linea.notas ? `Nota: ${linea.notas}` : undefined,
-        },
-        unit_amount: Math.round(Number(linea.precio_unitario) * 100),
-      },
-      quantity: linea.cantidad,
-    }));
+    // 3. Líneas de Stripe en céntimos: se cobra el total guardado del pedido (con su
+    //    descuento o ajuste), no la suma de las líneas a precio completo (hallazgo 5)
+    if (aCentimos(pedido.total) < MINIMO_STRIPE_CENTIMOS) {
+      return res.status(400).json({
+        success: false,
+        message: `El total del pedido #${pedido_id} (${formatearEuros(aCentimos(pedido.total))} €) es inferior al mínimo de ${formatearEuros(MINIMO_STRIPE_CENTIMOS)} € que admite Stripe. Cóbralo en efectivo o con datáfono.`,
+      });
+    }
+    const lineItems = lineasParaStripe(pedido, lineasRes.rows);
 
     // Determinar la URL base de retorno (prioridad: FRONTEND_URL > cabeceras proxy > host)
     let frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/+$/, '') : null;
