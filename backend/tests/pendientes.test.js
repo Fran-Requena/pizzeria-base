@@ -17,11 +17,6 @@ describe('Hallazgo 3 (M-26): varias sesiones de Stripe vivas', () => {
   test.todo('un segundo pago de Stripe del mismo pedido queda registrado y se detecta');
 });
 
-describe('Hallazgo 4 (M-26): cobro doble en caja', () => {
-  test.todo('/cobro rechaza un pedido ya pagado y no cambia su metodo_pago');
-  test.todo('/cobro en efectivo o datáfono expira la sesión de Stripe abierta del pedido');
-});
-
 describe('Hallazgo 5 (M-26): descuento no cobrado en Stripe', () => {
   test.todo('crear-sesion cobra en Stripe el total del pedido con su descuento, no la suma de las líneas a precio completo');
 });

@@ -208,6 +208,58 @@ describe('PUT/POST /api/pedidos/:id/cobro', () => {
     assert.equal(p.estado_pago, 'pendiente');
     assert.equal(p.metodo_pago, 'stripe');
   });
+
+  test('/cobro rechaza un pedido ya pagado y no cambia su metodo_pago', async () => {
+    const id = await crearPedido();
+    await pool.query(`UPDATE pedidos SET estado_pago = 'pagado' WHERE id = $1`, [id]);
+
+    const r = await cobrar(id, { metodo_pago: 'efectivo_entrega' });
+    assert.equal(r.estado, 409);
+    assert.equal(r.json.success, false);
+    assert.equal(r.json.message, `El pedido #${id} ya fue pagado anteriormente`);
+    assert.equal(control.llamadas.length, 0);
+
+    const p = await leerPedido(id);
+    assert.equal(p.estado_pago, 'pagado');
+    assert.equal(p.metodo_pago, 'stripe');
+  });
+
+  test('/cobro en efectivo o datáfono expira la sesión de Stripe abierta del pedido', async () => {
+    const id = await crearPedido();
+    const sesion = await crearSesion({ pedido_id: id });
+    assert.equal(sesion.estado, 200);
+
+    const r = await cobrar(id, { metodo_pago: 'tarjeta_entrega' });
+    assert.equal(r.estado, 200);
+    assert.equal(r.json.data.metodo_pago, 'tarjeta_entrega');
+
+    assert.deepEqual(control.llamadasA('checkout.sessions.expire').map((l) => l.id), [sesion.json.sessionId]);
+    assert.equal(control.sesiones.get(sesion.json.sessionId).status, 'expired');
+    assert.equal((await leerPedido(id)).estado_pago, 'pagado');
+  });
+
+  test('si no puede expirar la sesión de Stripe, lo registra y registra el cobro igualmente', async (t) => {
+    const id = await crearPedido();
+    await crearSesion({ pedido_id: id });
+    control.expirar = () => {
+      throw new Error('Fallo simulado de Stripe');
+    };
+    const avisos = t.mock.method(console, 'warn', () => {});
+
+    const r = await cobrar(id, { metodo_pago: 'efectivo_entrega' });
+    assert.equal(r.estado, 200);
+    assert.equal((await leerPedido(id)).estado_pago, 'pagado');
+    assert.ok(avisos.mock.calls.some((c) => String(c.arguments[0]).includes('No se pudo expirar')));
+  });
+
+  test('el apunte manual con metodo_pago stripe no expira la sesión', async () => {
+    const id = await crearPedido();
+    await crearSesion({ pedido_id: id });
+
+    const r = await cobrar(id, { metodo_pago: 'stripe' });
+    assert.equal(r.estado, 200);
+    assert.equal(control.llamadasA('checkout.sessions.expire').length, 0);
+  });
 });
 
 describe('POST /api/pagos/webhook', () => {

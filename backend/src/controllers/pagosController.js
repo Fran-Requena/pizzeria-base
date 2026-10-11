@@ -12,6 +12,23 @@ if (!stripe) {
 }
 
 /**
+ * Expira una sesión de Checkout para que ya no se pueda pagar (por ejemplo, al cobrar
+ * el pedido en caja). Si falla (no existe, ya no está abierta o Stripe no responde),
+ * lo registra y devuelve false: quien llama decide si sigue.
+ */
+export async function expirarSesionStripe(sessionId, pedidoId) {
+  if (!stripe || !sessionId) return false;
+  try {
+    await stripe.checkout.sessions.expire(sessionId);
+    console.log(`🔒 [Stripe] Sesión ${sessionId} del pedido #${pedidoId} expirada.`);
+    return true;
+  } catch (error) {
+    console.warn(`⚠️ [Stripe] No se pudo expirar la sesión ${sessionId} del pedido #${pedidoId}: ${error.message}`);
+    return false;
+  }
+}
+
+/**
  * Consulta el estado de configuración de la pasarela Stripe (útil para diagnóstico en clase)
  */
 export const getConfigStatus = (req, res) => {
