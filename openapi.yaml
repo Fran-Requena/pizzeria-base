@@ -5,7 +5,9 @@ openapi: 3.0.3
 # Este documento describe la API tal como está implementada hoy, no la API
 # deseada. Las extensiones `x-nota` señalan comportamientos problemáticos que
 # NO se han corregido (ver también docs/AUDITORIA.md).
-# Verificado contra el código del commit f2f00d0.
+# Verificado contra el código del commit f2f00d0. Los pagos (crear-sesion,
+# /cobro, webhook, confirmar-sesion y reconciliar) están actualizados con la
+# fase 1 de MEJORAS.md (M-06, M-13 y M-26).
 # ==============================================================================
 info:
   title: API Pizzería Bella Napoli (implementación actual)
@@ -35,7 +37,8 @@ info:
     4. Si paga con tarjeta online: `POST /api/pagos/crear-sesion` → abrir `url`
        de Stripe. Al volver, Stripe redirige a la web (no a la app) con
        `?pago=exito|cancelado&pedido_id=…`.
-    5. `POST /api/pagos/confirmar-sesion` (opcional) para reconciliar el pago.
+    5. `POST /api/pagos/confirmar-sesion` (opcional) para confirmar el pago al
+       volver. Si no se llama, el servidor lo reconcilia solo cada pocos minutos.
     6. `GET /api/pedidos/{id}`: consultar periódicamente `estado` y `estado_pago`.
   x-nota: |
     Ningún endpoint está protegido. Cualquiera puede leer los datos personales
@@ -650,16 +653,23 @@ paths:
       tags: [Pedidos]
       summary: Registrar el cobro presencial
       operationId: registrarCobroPut
-      description: Pone `estado_pago = pagado` y, si se envía, cambia `metodo_pago`.
+      description: |
+        Pone `estado_pago = pagado` y, si se envía, cambia `metodo_pago`.
+
+        Rechaza con 409 un pedido ya pagado (sin tocar su `metodo_pago`) o
+        cancelado. Si el cobro es en efectivo o datáfono (`metodo_pago` final
+        distinto de `stripe`) y el pedido tiene `stripe_session_id`, expira esa
+        sesión de Stripe para que no se pueda pagar también online; si no puede
+        expirarla, lo registra en el log y registra el cobro igualmente.
       requestBody: { $ref: '#/components/requestBodies/Cobro' }
       responses:
         '200': { $ref: '#/components/responses/CobroOk' }
         '404': { $ref: '#/components/responses/PedidoNoEncontrado' }
+        '409': { $ref: '#/components/responses/CobroRechazado' }
         '500': { $ref: '#/components/responses/ErrorInterno' }
       x-nota: |
         Público: cualquiera puede marcar como pagado cualquier pedido sin pasar
-        por Stripe. No comprueba si el pedido está cancelado o ya pagado.
-        importe_entregado y cambio no se guardan; solo se devuelven.
+        por Stripe. importe_entregado y cambio no se guardan; solo se devuelven.
     post:
       tags: [Pedidos]
       summary: Registrar el cobro presencial (igual que PUT)
@@ -668,6 +678,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/CobroOk' }
         '404': { $ref: '#/components/responses/PedidoNoEncontrado' }
+        '409': { $ref: '#/components/responses/CobroRechazado' }
         '500': { $ref: '#/components/responses/ErrorInterno' }
       x-nota: Igual que PUT.
 
@@ -895,10 +906,22 @@ paths:
       summary: Crear la sesión de Stripe Checkout de un pedido
       operationId: crearSesionPago
       description: |
-        Crea una sesión de Checkout (modo `payment`, EUR) con una línea por
-        cada línea del pedido (`precio_unitario` × 100, redondeado).
+        Crea una sesión de Checkout (modo `payment`, EUR) que cobra el **total
+        guardado del pedido** (`pedidos.total`, con su descuento o ajuste),
+        convertido a céntimos sin coma flotante. Si el total coincide con la suma
+        de las líneas, hay una línea de Stripe por producto; si no, una sola línea
+        `Pedido #N` con el total. Lleva `client_reference_id` y
+        `metadata.pedido_id` con el id del pedido.
         Guarda `stripe_session_id` y pone `metodo_pago = stripe` en el pedido.
         La app debe abrir `url` en el navegador.
+
+        **Una sola sesión viva por pedido.** Si el pedido ya tiene
+        `stripe_session_id`, antes de crear otra consulta la anterior en Stripe:
+        - pagada: marca el pedido como pagado y responde 400 "ya fue pagado";
+        - abierta: la expira (si no puede, 503 sin crear otra);
+        - caducada o inexistente: crea la nueva;
+        - completada sin pagar (pago en proceso): 409;
+        - si la consulta falla por otro motivo: 503 sin crear otra.
 
         **URLs de retorno** (base = `FRONTEND_URL` sin barra final; si no está
         definida, `x-forwarded-proto://x-forwarded-host` o el `Host` de la petición
@@ -934,7 +957,11 @@ paths:
                 url: https://checkout.stripe.com/c/pay/cs_test_a1B2c3
                 sessionId: cs_test_a1B2c3
         '400':
-          description: Falta pedido_id, el pedido ya está pagado o no tiene líneas.
+          description: |
+            Falta pedido_id, el pedido ya está pagado (también si se descubre al
+            consultar su sesión anterior), no tiene líneas o su total es inferior
+            al mínimo de Stripe (0.50 €). El texto "ya fue pagado" no cambia: los
+            clientes lo usan para detectar ese caso.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -943,12 +970,24 @@ paths:
                   value: { success: false, message: Falta el parámetro pedido_id }
                 yaPagado:
                   value: { success: false, message: 'El pedido #104 ya fue pagado anteriormente' }
+                inferiorAlMinimo:
+                  value: { success: false, message: 'El total del pedido #104 (0.30 €) es inferior al mínimo de 0.50 € que admite Stripe. Cóbralo en efectivo o con datáfono.' }
         '404':
           description: El pedido no existe.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { success: false, message: 'El pedido #999 no existe' }
+        '409':
+          description: El pedido está cancelado (no se llama a Stripe) o el pago de su sesión anterior se está procesando.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                cancelado:
+                  value: { success: false, message: 'El pedido #104 está cancelado y no se puede cobrar' }
+                pagoEnProceso:
+                  value: { success: false, message: 'El pago del pedido #104 se está procesando en Stripe. Espera a que se confirme antes de intentarlo de nuevo.' }
         '500':
           description: Error de Stripe o de la base de datos (con su mensaje en `error`).
           content:
@@ -956,14 +995,23 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
               example: { success: false, message: Error al iniciar la sesión de pago con Stripe, error: Invalid API Key provided }
         '503':
-          description: Stripe no está configurado (sin STRIPE_SECRET_KEY).
+          description: |
+            Stripe no está configurado (sin STRIPE_SECRET_KEY), o no se pudo
+            consultar o expirar en Stripe la sesión anterior del pedido (no se
+            crea otra; se puede reintentar).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                sinStripe:
+                  value: { success: false, message: 'La pasarela de pagos Stripe no está configurada en este servidor. Por favor, selecciona Pago en Efectivo o Datáfono.' }
+                sesionAnterior:
+                  value: { success: false, message: 'No se pudo comprobar con Stripe la sesión de pago anterior del pedido #104. Inténtalo de nuevo en unos segundos.' }
       x-nota: |
-        - El importe sale de lineas_pedido.precio_unitario, que se puede
-          manipular con /comanda; ignora pedidos.total y descuentos.
-        - No comprueba si el pedido está cancelado.
+        - El total del pedido se puede manipular con /comanda (campo total o
+          descuento), y es lo que se cobra.
+        - Dos llamadas simultáneas para el mismo pedido aún podrían crear dos
+          sesiones (no hay bloqueo entre la consulta y la creación).
         - Sin FRONTEND_URL, la URL de retorno se construye con cabeceras que
           controla el cliente (X-Forwarded-Host): redirección abierta.
         - Usa pedido.cliente_email, columna que no existe (siempre vacío).
@@ -974,9 +1022,14 @@ paths:
       summary: Confirmar el pago al volver de Stripe
       operationId: confirmarSesionPago
       description: |
-        Consulta la sesión en Stripe. Si `payment_status` es `paid`, pone
+        Consulta la sesión en Stripe. Si se envía `pedido_id`, la sesión debe
+        ser de ese pedido (`client_reference_id` o `metadata.pedido_id`); si no,
+        responde 409 y no cambia nada. Si `payment_status` es `paid`, pone
         `estado_pago = pagado`. Si solo se envía `pedido_id`, usa el
         `stripe_session_id` guardado en el pedido.
+
+        Si el pedido ya estaba pagado con otra sesión o en caja, no cambia nada
+        y registra en el log un posible cobro doble (responde igualmente `pagado`).
       requestBody:
         required: true
         content:
@@ -1016,6 +1069,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { success: false, message: No se encontró sesión de Stripe asociada }
+        '409':
+          description: La sesión no pertenece al pedido indicado. No se cambia nada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { success: false, message: 'La sesión de pago no pertenece al pedido #104' }
         '500':
           description: Error de Stripe (p. ej. session_id inexistente) o de la base de datos.
           content:
@@ -1027,9 +1086,93 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
       x-nota: |
-        CRÍTICO: si se envían pedido_id y session_id, marca como pagado el
-        pedido_id del cuerpo aunque la sesión pertenezca a otro pedido. Con una
-        sesión pagada se puede "pagar" cualquier pedido. Sin autenticación.
+        Sin autenticación. Si solo se envía session_id, marca como pagado el
+        pedido que indica la propia sesión.
+
+  /api/pagos/reconciliar:
+    post:
+      tags: [Pagos]
+      summary: Reconciliar los pagos pendientes con Stripe
+      operationId: reconciliarPagos
+      description: |
+        Revisa los pedidos con `estado_pago = pendiente` y `stripe_session_id`
+        creados en las últimas 24 horas (como mucho 20, los más recientes
+        primero). Consulta en Stripe solo la sesión guardada de cada uno y marca
+        como pagados los que lo estén. Recupera los pagos cuyo webhook no llegó.
+
+        El servidor también la ejecuta solo cada `RECONCILIACION_MINUTOS`
+        minutos (2 por defecto; 0 la desactiva) si Stripe está configurado.
+        Un fallo con una sesión se registra y cuenta en `errores`; no detiene
+        las demás.
+
+        **Freno.** El endpoint es público, así que limita las consultas a Stripe:
+        - Si ya hay una ronda en marcha, responde `estado: en_curso` (resumen
+          vacío) sin llamar a Stripe.
+        - Si la última ronda terminó hace menos de `RECONCILIACION_ESPERA_SEGUNDOS`
+          (30 por defecto; 0 quita la espera), devuelve su resultado con
+          `estado: reciente` y `hace_segundos`, sin llamar a Stripe.
+        - En ambos casos la respuesta es 200. Solo `estado: completada` indica
+          que esta llamada ha consultado Stripe.
+        La reconciliación periódica del servidor no espera por las llamadas al
+        endpoint, pero tampoco se solapa con una ronda en curso.
+      responses:
+        '200':
+          description: Resultado de la reconciliación.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      estado:
+                        type: string
+                        enum: [completada, en_curso, reciente]
+                        description: |
+                          `completada`: esta llamada ha consultado Stripe.
+                          `en_curso`: había otra ronda en marcha; no se ha consultado Stripe y los contadores van a cero.
+                          `reciente`: resultado de la última ronda, repetido sin consultar Stripe.
+                      hace_segundos:
+                        type: integer
+                        description: Solo con `estado = reciente`. Segundos desde que terminó la ronda cuyo resultado se devuelve.
+                      revisados: { type: integer, description: Pedidos consultados en Stripe. }
+                      pagados:
+                        type: array
+                        description: Ids de los pedidos marcados como pagados en esta ejecución.
+                        items: { type: integer }
+                      errores: { type: integer, description: Sesiones que no se pudieron consultar. }
+                  message: { type: string }
+              examples:
+                completada:
+                  value:
+                    success: true
+                    data: { estado: completada, revisados: 3, pagados: [104], errores: 0 }
+                    message: 'Revisados 3 pedidos pendientes de pago; 1 marcados como pagados.'
+                reciente:
+                  value:
+                    success: true
+                    data: { estado: reciente, hace_segundos: 12, revisados: 3, pagados: [104], errores: 0 }
+                    message: 'Resultado de la reconciliación de hace 12 s; no se ha consultado Stripe. Espera unos segundos antes de volver a pedirla.'
+                enCurso:
+                  value:
+                    success: true
+                    data: { estado: en_curso, revisados: 0, pagados: [], errores: 0 }
+                    message: 'Ya hay una reconciliación en curso; no se ha consultado Stripe.'
+        '500':
+          description: Error de la base de datos.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { success: false, message: Error al reconciliar los pagos con Stripe, error: connect ECONNREFUSED }
+        '503':
+          description: Stripe no está configurado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { success: false, message: Stripe no configurado }
+      x-nota: Sin autenticación. Una ronda hace hasta 20 consultas a Stripe; el freno limita las rondas a una cada 30 s por servidor, no por cliente.
 
   /api/pagos/webhook:
     post:
@@ -1037,10 +1180,17 @@ paths:
       summary: Webhook de Stripe
       operationId: recibirWebhookStripe
       description: |
-        Lo llama Stripe, no las apps. Solo procesa `checkout.session.completed`:
-        toma el pedido de `client_reference_id` (o `metadata.pedido_id`) y pone
-        `estado_pago = pagado`. El resto de eventos se ignoran con 200.
+        Lo llama Stripe, no las apps. Solo procesa `checkout.session.completed`
+        con `payment_status = paid`: toma el pedido de `client_reference_id` (o
+        `metadata.pedido_id`) y pone `estado_pago = pagado`. Una sesión completada
+        sin pago confirmado y el resto de eventos se ignoran con 200.
 
+        Si el pedido ya estaba pagado con otra sesión o en caja, no cambia nada
+        y registra en el log un posible cobro doble con el pedido y las dos sesiones.
+
+        **Firma.** Con `STRIPE_WEBHOOK_SECRET` definido la firma es obligatoria:
+        sin cabecera `Stripe-Signature` o con firma no válida responde 400. Sin
+        el secreto, acepta el evento sin verificar y registra un aviso.
         El cuerpo raw se conserva con `express.json({ verify })` (`req.rawBody`)
         y se usa para `stripe.webhooks.constructEvent`.
       parameters:
@@ -1048,7 +1198,7 @@ paths:
           in: header
           required: false
           schema: { type: string }
-          description: Firma de Stripe. Si falta, el evento se acepta SIN verificar.
+          description: Firma de Stripe. Obligatoria si el servidor tiene STRIPE_WEBHOOK_SECRET.
       requestBody: { $ref: '#/components/requestBodies/EventoStripe' }
       responses:
         '200': { $ref: '#/components/responses/WebhookOk' }
@@ -1056,11 +1206,12 @@ paths:
         '500': { $ref: '#/components/responses/WebhookErrorBD' }
         '503': { $ref: '#/components/responses/WebhookSinStripe' }
       x-nota: |
-        - CRÍTICO: si falta la cabecera Stripe-Signature o la variable
-          STRIPE_WEBHOOK_SECRET, acepta el JSON tal cual sin verificar firma:
-          cualquiera puede marcar un pedido como pagado.
-        - No es idempotente por event.id (no se guardan los eventos).
-        - No comprueba payment_status (pagos asíncronos se marcan antes de tiempo).
+        - CRÍTICO si falta la variable STRIPE_WEBHOOK_SECRET: acepta el JSON tal
+          cual sin verificar firma y cualquiera puede marcar un pedido como pagado.
+        - No deduplica por event.id (no se guardan los eventos); marcar como
+          pagado es idempotente, así que un reintento no cambia nada.
+        - No procesa checkout.session.async_payment_succeeded: los pagos
+          asíncronos los recoge la reconciliación (/api/pagos/reconciliar).
         - No cambia el estado de preparación del pedido.
         - Los errores 400/503 son texto plano, no JSON.
 
@@ -1271,6 +1422,19 @@ components:
               success: { type: boolean, example: true }
               message: { type: string, example: 'Comanda #101 modificada y actualizada con éxito' }
               data: { $ref: '#/components/schemas/PedidoComanda' }
+    CobroRechazado:
+      description: El pedido ya está pagado o está cancelado; no se cambia nada.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            yaPagado:
+              value: { success: false, message: 'El pedido #104 ya fue pagado anteriormente' }
+            cancelado:
+              value: { success: false, message: 'El pedido #104 está cancelado y no se puede cobrar' }
+            carrera:
+              summary: Se pagó o canceló entre la comprobación y la actualización
+              value: { success: false, message: 'El pedido #104 se ha pagado o cancelado mientras se registraba el cobro' }
     WebhookOk:
       description: Evento recibido (procesado o ignorado).
       content:
@@ -1280,7 +1444,7 @@ components:
             properties:
               received: { type: boolean, example: true }
     WebhookFirmaNoValida:
-      description: Firma no válida. Texto plano.
+      description: Firma no válida, o falta la cabecera Stripe-Signature cuando hay STRIPE_WEBHOOK_SECRET. Texto plano.
       content:
         text/plain:
           schema: { type: string, example: 'Webhook Error: No signatures found matching the expected signature for payload.' }
@@ -1422,7 +1586,8 @@ components:
       type: string
       description: |
         Valores que escribe el código. La columna no tiene CHECK. Solo pasa a
-        `pagado` por Stripe (webhook o confirmar-sesion) o por /cobro.
+        `pagado` por Stripe (webhook, confirmar-sesion, crear-sesion al
+        descubrir una sesión anterior pagada o reconciliación) o por /cobro.
       enum: [pendiente, pagado]
       x-nota: No existe el valor fallido ni se registra un pago rechazado.
     MetodoPago:

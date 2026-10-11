@@ -3,7 +3,8 @@ import {
   crearSesionCheckout, 
   handleWebhook, 
   getConfigStatus,
-  confirmarSesion
+  confirmarSesion,
+  reconciliar
 } from '../controllers/pagosController.js';
 
 const router = Router();
@@ -12,6 +13,7 @@ const router = Router();
 router.get('/config', getConfigStatus);
 router.post('/crear-sesion', crearSesionCheckout);
 router.post('/confirmar-sesion', confirmarSesion);
+router.post('/reconciliar', reconciliar);
 router.post('/webhook', handleWebhook);
 
 export default router;

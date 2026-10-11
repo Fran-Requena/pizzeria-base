@@ -101,14 +101,14 @@ y tu recomendación (adelante, adelante con cambios, aplazar o descartar).
 | M-03 | Confirmación del personal antes de cocinar domicilios en efectivo | frontend-web | B | M | Idea |
 | M-04 | Verificación por teléfono con código (modo laboratorio) | backend, BD, web, PWA, app | C | L | Idea |
 | M-05 | Proveedor real de SMS y límites antiabuso | backend, infraestructura | C | M | Idea (depende de M-04) |
-| M-06 | Reconciliación de pagos en el servidor | backend | A | M | Idea |
+| M-06 | Reconciliación de pagos en el servidor | backend | A | M | Hecha (pendiente de fusionar) |
 | M-07 | Caducidad de pagos abandonados | backend | B | M | Idea |
 | M-08 | Cancelar con motivo, ocultar cancelados y limpieza controlada de pruebas | web, backend, BD | B | M | Idea |
 | M-09 | Etiqueta única de situación del pedido en Caja y Cocina | frontend-web | B | M | Idea |
 | M-10 | Tabla de eventos del pedido (trazabilidad) | BD, backend | C | L | Idea |
 | M-11 | Marca "a reembolsar" y reembolso desde Stripe | backend, web | C | L | Idea |
 | M-12 | Seguimiento web: "Pendiente de pago" en lugar de "Recibido" | frontend-web | B | S | Idea |
-| M-13 | Webhook y confirmar-sesion endurecidos | backend | A | M | Idea |
+| M-13 | Webhook y confirmar-sesion endurecidos | backend | A | M | Hecha (pendiente de fusionar) |
 | M-14 | Retorno de Stripe directo a la app | backend, app | C | M | Idea |
 | M-15 | Lector de QR de mesa en la app | app | C | M | Idea |
 | M-16 | Fuentes de la web en la app (licencia por verificar) | app | C | S | Idea |
@@ -121,7 +121,7 @@ y tu recomendación (adelante, adelante con cambios, aplazar o descartar).
 | M-23 | Plan de contingencia ante bloqueos de red | infraestructura, guías | A | M | Idea |
 | M-24 | Cuentas y roles (cliente, cocina, administración) | backend, BD, clientes | C | L | Idea |
 | M-25 | Verificación de la dirección de reparto | backend, web | C | M | Idea |
-| M-26 | Cobros coherentes: rechazo (409) de cobros sobre pedidos pagados o cancelados, descuento incluido en Stripe, una sola sesión viva por pedido | backend, frontend-web | A | M | Idea |
+| M-26 | Cobros coherentes: rechazo (409) de cobros sobre pedidos pagados o cancelados, descuento incluido en Stripe, una sola sesión viva por pedido | backend, frontend-web | A | M | Hecha (pendiente de fusionar) |
 | M-27 | Máquina de estados del pedido y regla de mesa (se libera al servir y pagar) | backend | B | M | Idea |
 | M-28 | Pulido del seguimiento, Cocina, mostrador y PWA (etiquetas, columnas y mensajes) | frontend-web, PWA | B | M | Idea |
 | M-29 | Recordar varios pedidos y limitar el sondeo a Stripe | frontend-web | B | S | Idea |

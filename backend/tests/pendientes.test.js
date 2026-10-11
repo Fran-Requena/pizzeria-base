@@ -7,30 +7,6 @@
  */
 import { describe, test } from 'node:test';
 
-describe('Hallazgo 1 (M-06): pagado en Stripe con el webhook caído', () => {
-  test.todo('un pedido pagado en Stripe queda marcado como pagado aunque el webhook no llegue (reconciliación desde el servidor)');
-  test.todo('la reconciliación encuentra la sesión pagada aunque stripe_session_id apunte a una sesión posterior');
-});
-
-describe('Hallazgo 3 (M-26): varias sesiones de Stripe vivas', () => {
-  test.todo('crear-sesion reutiliza la sesión abierta del pedido o expira la anterior: nunca hay dos sesiones cobrables a la vez');
-  test.todo('un segundo pago de Stripe del mismo pedido queda registrado y se detecta');
-});
-
-describe('Hallazgo 4 (M-26): cobro doble en caja', () => {
-  test.todo('/cobro rechaza un pedido ya pagado y no cambia su metodo_pago');
-  test.todo('/cobro en efectivo o datáfono expira la sesión de Stripe abierta del pedido');
-});
-
-describe('Hallazgo 5 (M-26): descuento no cobrado en Stripe', () => {
-  test.todo('crear-sesion cobra en Stripe el total del pedido con su descuento, no la suma de las líneas a precio completo');
-});
-
-describe('Hallazgo 7 (M-26): cobro de pedidos cancelados', () => {
-  test.todo('crear-sesion rechaza un pedido cancelado y no llama a Stripe');
-  test.todo('/cobro rechaza un pedido cancelado');
-});
-
 describe('Hallazgo 10 (M-27): transiciones de estado libres', () => {
   test.todo('/estado rechaza las transiciones no permitidas (de entregado a pendiente, de cancelado a en_preparacion)');
   test.todo('/comanda rechaza las mismas transiciones no permitidas que /estado');

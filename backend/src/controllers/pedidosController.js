@@ -1,4 +1,5 @@
 import pool, { query } from '../config/db.js';
+import { expirarSesionStripe } from './pagosController.js';
 
 /**
  * Obtener todos los pedidos con sus líneas y detalles para el panel de mostrador y cocina
@@ -394,17 +395,47 @@ export const registrarCobroPedido = async (req, res) => {
     const { id } = req.params;
     const { metodo_pago, importe_entregado, cambio } = req.body;
 
+    const previoRes = await query(
+      'SELECT id, estado, estado_pago, metodo_pago, stripe_session_id FROM pedidos WHERE id = $1',
+      [id]
+    );
+    if (previoRes.rowCount === 0) {
+      return res.status(404).json({ success: false, message: `Pedido #${id} no encontrado` });
+    }
+    const previo = previoRes.rows[0];
+
+    // Un pedido pagado no se vuelve a cobrar ni cambia su metodo_pago (hallazgo 4)
+    if (previo.estado_pago === 'pagado') {
+      return res.status(409).json({ success: false, message: `El pedido #${id} ya fue pagado anteriormente` });
+    }
+
+    // Un pedido cancelado no se cobra (hallazgo 7)
+    if (previo.estado === 'cancelado') {
+      return res.status(409).json({ success: false, message: `El pedido #${id} está cancelado y no se puede cobrar` });
+    }
+
+    // Cobro en efectivo o datáfono de un pedido con sesión de Stripe: se expira la sesión
+    // para que el cliente no pueda pagarlo otra vez (hallazgo 4). Si falla, se registra y se sigue.
+    const metodoFinal = metodo_pago || previo.metodo_pago;
+    if (metodoFinal !== 'stripe' && previo.stripe_session_id) {
+      await expirarSesionStripe(previo.stripe_session_id, previo.id);
+    }
+
+    // Las condiciones evitan cobrar un pedido pagado o cancelado entre la consulta y la actualización
     const sql = `
-      UPDATE pedidos 
+      UPDATE pedidos
       SET estado_pago = 'pagado',
           metodo_pago = COALESCE($1, metodo_pago)
-      WHERE id = $2 
+      WHERE id = $2 AND estado <> 'cancelado' AND estado_pago IS DISTINCT FROM 'pagado'
       RETURNING *
     `;
 
     const result = await query(sql, [metodo_pago || null, id]);
     if (result.rowCount === 0) {
-      return res.status(404).json({ success: false, message: `Pedido #${id} no encontrado` });
+      return res.status(409).json({
+        success: false,
+        message: `El pedido #${id} se ha pagado o cancelado mientras se registraba el cobro`,
+      });
     }
 
     const pedido = result.rows[0];

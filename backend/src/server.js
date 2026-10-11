@@ -10,7 +10,7 @@ import pizzasRoutes from './routes/pizzasRoutes.js';
 import pedidosRoutes from './routes/pedidosRoutes.js';
 import mesasRoutes from './routes/mesasRoutes.js';
 import pagosRoutes from './routes/pagosRoutes.js';
-import { handleWebhook } from './controllers/pagosController.js';
+import { handleWebhook, iniciarReconciliacionPeriodica } from './controllers/pagosController.js';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -114,6 +114,10 @@ if (ejecutadoDirectamente) {
     // Probar conexión con la base de datos
     await testConnection();
   });
+
+  // Reconciliación periódica de pagos con Stripe (M-06). Solo aquí: al importar la app
+  // (tests) no se arranca. Si Stripe no está configurado no hace nada.
+  iniciarReconciliacionPeriodica();
 }
 
 export default app;

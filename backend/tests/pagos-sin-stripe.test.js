@@ -53,6 +53,19 @@ describe('Pagos con la pasarela desactivada (sin STRIPE_SECRET_KEY)', () => {
     assert.equal(r.json.message, 'Stripe no configurado');
   });
 
+  test('reconciliar responde 503', async () => {
+    const r = await pedir(api.url, 'POST', '/api/pagos/reconciliar');
+    assert.equal(r.estado, 503);
+    assert.equal(r.json.success, false);
+    assert.equal(r.json.message, 'Stripe no configurado');
+  });
+
+  test('la reconciliación periódica no se arranca', async () => {
+    const { iniciarReconciliacionPeriodica, reconciliacionPeriodicaActiva } = await import('../src/controllers/pagosController.js');
+    assert.equal(iniciarReconciliacionPeriodica(), null);
+    assert.equal(reconciliacionPeriodicaActiva(), false);
+  });
+
   test('GET /api/pagos/config indica que Stripe no está configurado', async () => {
     const r = await pedir(api.url, 'GET', '/api/pagos/config');
     assert.equal(r.estado, 200);
