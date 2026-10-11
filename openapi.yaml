@@ -1104,6 +1104,17 @@ paths:
         minutos (2 por defecto; 0 la desactiva) si Stripe está configurado.
         Un fallo con una sesión se registra y cuenta en `errores`; no detiene
         las demás.
+
+        **Freno.** El endpoint es público, así que limita las consultas a Stripe:
+        - Si ya hay una ronda en marcha, responde `estado: en_curso` (resumen
+          vacío) sin llamar a Stripe.
+        - Si la última ronda terminó hace menos de `RECONCILIACION_ESPERA_SEGUNDOS`
+          (30 por defecto; 0 quita la espera), devuelve su resultado con
+          `estado: reciente` y `hace_segundos`, sin llamar a Stripe.
+        - En ambos casos la respuesta es 200. Solo `estado: completada` indica
+          que esta llamada ha consultado Stripe.
+        La reconciliación periódica del servidor no espera por las llamadas al
+        endpoint, pero tampoco se solapa con una ronda en curso.
       responses:
         '200':
           description: Resultado de la reconciliación.
@@ -1116,6 +1127,16 @@ paths:
                   data:
                     type: object
                     properties:
+                      estado:
+                        type: string
+                        enum: [completada, en_curso, reciente]
+                        description: |
+                          `completada`: esta llamada ha consultado Stripe.
+                          `en_curso`: había otra ronda en marcha; no se ha consultado Stripe y los contadores van a cero.
+                          `reciente`: resultado de la última ronda, repetido sin consultar Stripe.
+                      hace_segundos:
+                        type: integer
+                        description: Solo con `estado = reciente`. Segundos desde que terminó la ronda cuyo resultado se devuelve.
                       revisados: { type: integer, description: Pedidos consultados en Stripe. }
                       pagados:
                         type: array
@@ -1123,10 +1144,22 @@ paths:
                         items: { type: integer }
                       errores: { type: integer, description: Sesiones que no se pudieron consultar. }
                   message: { type: string }
-              example:
-                success: true
-                data: { revisados: 3, pagados: [104], errores: 0 }
-                message: 'Revisados 3 pedidos pendientes de pago; 1 marcados como pagados.'
+              examples:
+                completada:
+                  value:
+                    success: true
+                    data: { estado: completada, revisados: 3, pagados: [104], errores: 0 }
+                    message: 'Revisados 3 pedidos pendientes de pago; 1 marcados como pagados.'
+                reciente:
+                  value:
+                    success: true
+                    data: { estado: reciente, hace_segundos: 12, revisados: 3, pagados: [104], errores: 0 }
+                    message: 'Resultado de la reconciliación de hace 12 s; no se ha consultado Stripe. Espera unos segundos antes de volver a pedirla.'
+                enCurso:
+                  value:
+                    success: true
+                    data: { estado: en_curso, revisados: 0, pagados: [], errores: 0 }
+                    message: 'Ya hay una reconciliación en curso; no se ha consultado Stripe.'
         '500':
           description: Error de la base de datos.
           content:
@@ -1139,7 +1172,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { success: false, message: Stripe no configurado }
-      x-nota: Sin autenticación. Cada llamada hace hasta 20 consultas a Stripe.
+      x-nota: Sin autenticación. Una ronda hace hasta 20 consultas a Stripe; el freno limita las rondas a una cada 30 s por servidor, no por cliente.
 
   /api/pagos/webhook:
     post:

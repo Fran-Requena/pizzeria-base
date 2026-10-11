@@ -368,7 +368,84 @@ export const confirmarSesion = async (req, res) => {
 const MAXIMO_RECONCILIACION = 20;
 const MINUTOS_RECONCILIACION_POR_DEFECTO = 2;
 
+const ESPERA_RECONCILIACION_SEGUNDOS_POR_DEFECTO = 30;
+
 let temporizadorReconciliacion = null;
+
+// Freno del endpoint (público): una sola ronda a la vez y una espera mínima entre rondas,
+// para que nadie pueda agotar el límite de peticiones de Stripe llamando en bucle.
+let rondaEnCurso = false;
+let ultimaRonda = null; // { resultado, terminadaEn } de la última ronda completada sin error
+
+// Reloj en milisegundos. Es monotónico (no le afectan los cambios de hora del sistema)
+// y se puede sustituir en los tests.
+const relojReal = () => performance.now();
+let reloj = relojReal;
+
+/** Sustituye el reloj de la reconciliación (tests). Sin argumento, restaura el real. */
+export function fijarRelojReconciliacion(nuevoReloj) {
+  reloj = nuevoReloj ?? relojReal;
+}
+
+/** Olvida la última ronda y la ronda en curso (tests). */
+export function reiniciarFrenoReconciliacion() {
+  rondaEnCurso = false;
+  ultimaRonda = null;
+}
+
+/** Segundos de espera entre rondas según RECONCILIACION_ESPERA_SEGUNDOS (0 la quita; vacío o no válido, el valor por defecto). */
+function leerEsperaReconciliacion() {
+  const valor = process.env.RECONCILIACION_ESPERA_SEGUNDOS?.trim();
+  if (!valor) return ESPERA_RECONCILIACION_SEGUNDOS_POR_DEFECTO;
+
+  const segundos = Number(valor);
+  if (!Number.isFinite(segundos) || segundos < 0) {
+    console.warn(`⚠️ [Stripe Reconciliación] RECONCILIACION_ESPERA_SEGUNDOS="${valor}" no es válido: se usan ${ESPERA_RECONCILIACION_SEGUNDOS_POR_DEFECTO} segundos.`);
+    return ESPERA_RECONCILIACION_SEGUNDOS_POR_DEFECTO;
+  }
+  return segundos;
+}
+
+/**
+ * Reconciliación con freno. Devuelve { estado, revisados, pagados, errores, ... }:
+ * - 'completada': esta llamada ha consultado Stripe.
+ * - 'en_curso': ya hay una ronda en marcha; no se llama a Stripe (resumen vacío).
+ * - 'reciente': la última ronda terminó hace menos de la espera; se devuelve su
+ *   resultado (más `hace_segundos`) sin llamar a Stripe.
+ *
+ * `respetarEspera: false` lo usa el temporizador interno: sigue sin solaparse con otra
+ * ronda, pero no se salta su turno por una llamada reciente al endpoint. Así el freno
+ * (pensado contra llamadas externas) no retrasa la reconciliación periódica, que ya
+ * tiene su propio intervalo, y su resultado también alimenta el del endpoint.
+ */
+export async function reconciliarPagos({ respetarEspera = true } = {}) {
+  if (!stripe) {
+    throw new Error('Stripe no configurado');
+  }
+
+  // Estas comprobaciones y la marca de "en curso" son síncronas (sin await entre
+  // medias): dos llamadas simultáneas no pueden pasar las dos.
+  if (rondaEnCurso) {
+    return { estado: 'en_curso', revisados: 0, pagados: [], errores: 0 };
+  }
+
+  if (respetarEspera && ultimaRonda) {
+    const haceSegundos = Math.max(0, (reloj() - ultimaRonda.terminadaEn) / 1000);
+    if (haceSegundos < leerEsperaReconciliacion()) {
+      return { ...ultimaRonda.resultado, estado: 'reciente', hace_segundos: Math.floor(haceSegundos) };
+    }
+  }
+
+  rondaEnCurso = true;
+  try {
+    const resultado = await consultarPagosPendientes();
+    // Una ronda que falla antes de consultar (p. ej. error de BD) no frena la siguiente
+    ultimaRonda = { resultado, terminadaEn: reloj() };
+    return { ...resultado, estado: 'completada' };
+  } finally {
+    rondaEnCurso = false;
+  }
+}
 
 /**
  * Revisa los pedidos pendientes de pago con sesión de Stripe creados en las últimas
@@ -376,11 +453,7 @@ let temporizadorReconciliacion = null;
  * Un fallo con una sesión se registra y no detiene las demás.
  * Devuelve { revisados, pagados: [ids marcados como pagados], errores }.
  */
-export async function reconciliarPagos() {
-  if (!stripe) {
-    throw new Error('Stripe no configurado');
-  }
-
+async function consultarPagosPendientes() {
   const pendientes = await query(
     `SELECT id, stripe_session_id
      FROM pedidos
@@ -427,11 +500,12 @@ export const reconciliar = async (req, res) => {
 
   try {
     const resultado = await reconciliarPagos();
-    res.json({
-      success: true,
-      data: resultado,
-      message: `Revisados ${resultado.revisados} pedidos pendientes de pago; ${resultado.pagados.length} marcados como pagados.`,
-    });
+    const mensajes = {
+      completada: `Revisados ${resultado.revisados} pedidos pendientes de pago; ${resultado.pagados.length} marcados como pagados.`,
+      en_curso: 'Ya hay una reconciliación en curso; no se ha consultado Stripe.',
+      reciente: `Resultado de la reconciliación de hace ${resultado.hace_segundos} s; no se ha consultado Stripe. Espera unos segundos antes de volver a pedirla.`,
+    };
+    res.json({ success: true, data: resultado, message: mensajes[resultado.estado] });
   } catch (error) {
     console.error('❌ [Stripe Reconciliación] Error al reconciliar los pagos:', error.message);
     res.status(500).json({ success: false, message: 'Error al reconciliar los pagos con Stripe', error: error.message });
@@ -467,19 +541,15 @@ export function iniciarReconciliacionPeriodica() {
     return null;
   }
 
-  let enCurso = false;
   temporizadorReconciliacion = setInterval(async () => {
-    if (enCurso) return; // La ejecución anterior aún no ha terminado
-    enCurso = true;
     try {
-      const { pagados, errores } = await reconciliarPagos();
-      if (pagados.length > 0 || errores > 0) {
+      // Sin respetar la espera del endpoint; si hay una ronda en curso, esta se omite
+      const { estado, pagados, errores } = await reconciliarPagos({ respetarEspera: false });
+      if (estado === 'completada' && (pagados.length > 0 || errores > 0)) {
         console.log(`🔄 [Stripe Reconciliación] Pedidos marcados como pagados: ${pagados.length ? pagados.join(', ') : 'ninguno'}; errores: ${errores}.`);
       }
     } catch (error) {
       console.error('❌ [Stripe Reconciliación] Error en la ejecución periódica:', error.message);
-    } finally {
-      enCurso = false;
     }
   }, minutos * 60 * 1000);
   // El temporizador no mantiene vivo el proceso por sí solo

@@ -12,6 +12,9 @@ import {
   iniciarReconciliacionPeriodica,
   detenerReconciliacionPeriodica,
   reconciliacionPeriodicaActiva,
+  fijarRelojReconciliacion,
+  reiniciarFrenoReconciliacion,
+  reconciliarPagos,
 } from '../src/controllers/pagosController.js';
 
 const SECRETO = 'whsec_doble_de_pruebas';
@@ -593,9 +596,16 @@ describe('POST /api/pagos/confirmar-sesion', () => {
 describe('Reconciliación de pagos (M-06): POST /api/pagos/reconciliar', () => {
   const reconciliarApi = () => pedir(api.url, 'POST', '/api/pagos/reconciliar');
 
-  // Saca de la ventana de 24 horas los pedidos de los tests anteriores
+  // Saca de la ventana de 24 horas los pedidos de los tests anteriores y quita el freno
+  // de la ronda anterior (si no, el endpoint devolvería su resultado en vez de consultar)
   beforeEach(async () => {
+    reiniciarFrenoReconciliacion();
     await pool.query(`UPDATE pedidos SET fecha = fecha - INTERVAL '30 days'`);
+  });
+
+  afterEach(() => {
+    fijarRelojReconciliacion();
+    delete process.env.RECONCILIACION_ESPERA_SEGUNDOS;
   });
 
   /** Crea un pedido con su sesión de Stripe y devuelve { id, sesion }. */
@@ -614,7 +624,7 @@ describe('Reconciliación de pagos (M-06): POST /api/pagos/reconciliar', () => {
     const r = await reconciliarApi();
     assert.equal(r.estado, 200);
     assert.equal(r.json.success, true);
-    assert.deepEqual(r.json.data, { revisados: 2, pagados: [pagado.id], errores: 0 });
+    assert.deepEqual(r.json.data, { estado: 'completada', revisados: 2, pagados: [pagado.id], errores: 0 });
     assert.equal(typeof r.json.message, 'string');
 
     assert.equal((await leerPedido(pagado.id)).estado_pago, 'pagado');
@@ -675,7 +685,7 @@ describe('Reconciliación de pagos (M-06): POST /api/pagos/reconciliar', () => {
 
     const r = await reconciliarApi();
     assert.equal(r.estado, 200);
-    assert.deepEqual(r.json.data, { revisados: 2, pagados: [pagado.id], errores: 1 });
+    assert.deepEqual(r.json.data, { estado: 'completada', revisados: 2, pagados: [pagado.id], errores: 1 });
     assert.ok(errores.mock.calls.some((c) => String(c.arguments[0]).includes(`#${falla.id}`)));
   });
 
@@ -688,6 +698,132 @@ describe('Reconciliación de pagos (M-06): POST /api/pagos/reconciliar', () => {
     const r = await reconciliarApi();
     assert.deepEqual(r.json.data.pagados, []);
     assert.equal((await leerPedido(id)).estado_pago, 'pendiente');
+  });
+
+  describe('freno contra abusos', () => {
+    /** Reloj controlado: el tiempo solo avanza cuando el test lo dice (en segundos). */
+    function relojControlado() {
+      let ms = 1_000_000;
+      fijarRelojReconciliacion(() => ms);
+      return { avanzar: (segundos) => { ms += segundos * 1000; } };
+    }
+
+    const consultas = () => control.llamadasA('checkout.sessions.retrieve').length;
+
+    test('dos llamadas seguidas hacen una sola ronda de consultas; la segunda devuelve el resultado anterior', async () => {
+      relojControlado();
+      const { id, sesion } = await pedidoConSesion();
+      control.pagar(sesion);
+      control.llamadas.length = 0;
+
+      const a = await reconciliarApi();
+      const b = await reconciliarApi();
+
+      assert.equal(a.json.data.estado, 'completada');
+      assert.deepEqual(a.json.data.pagados, [id]);
+      assert.equal(b.estado, 200);
+      assert.equal(b.json.success, true);
+      assert.deepEqual(b.json.data, { estado: 'reciente', hace_segundos: 0, revisados: 1, pagados: [id], errores: 0 });
+      assert.match(b.json.message, /no se ha consultado Stripe/);
+      assert.equal(consultas(), 1, 'la segunda llamada no consulta Stripe');
+    });
+
+    test('pasada la espera (30 s por defecto) vuelve a consultar', async () => {
+      const reloj = relojControlado();
+      await pedidoConSesion();
+      control.llamadas.length = 0;
+
+      await reconciliarApi();
+      reloj.avanzar(29);
+      const antes = await reconciliarApi();
+      assert.equal(antes.json.data.estado, 'reciente');
+      assert.equal(antes.json.data.hace_segundos, 29);
+      assert.equal(consultas(), 1);
+
+      reloj.avanzar(1);
+      const despues = await reconciliarApi();
+      assert.equal(despues.json.data.estado, 'completada');
+      assert.equal(consultas(), 2);
+    });
+
+    test('RECONCILIACION_ESPERA_SEGUNDOS cambia la espera y 0 la quita', async () => {
+      const reloj = relojControlado();
+      await pedidoConSesion();
+      control.llamadas.length = 0;
+
+      process.env.RECONCILIACION_ESPERA_SEGUNDOS = '5';
+      await reconciliarApi();
+      reloj.avanzar(4);
+      assert.equal((await reconciliarApi()).json.data.estado, 'reciente');
+      reloj.avanzar(1);
+      assert.equal((await reconciliarApi()).json.data.estado, 'completada');
+
+      process.env.RECONCILIACION_ESPERA_SEGUNDOS = '0';
+      assert.equal((await reconciliarApi()).json.data.estado, 'completada');
+      assert.equal(consultas(), 3);
+    });
+
+    test('dos llamadas simultáneas no se solapan: la segunda responde "en curso" sin llamar a Stripe', async () => {
+      relojControlado();
+      const { id, sesion } = await pedidoConSesion();
+      control.pagar(sesion);
+      control.llamadas.length = 0;
+
+      // Stripe "tarda": la consulta queda detenida hasta que el test la libere
+      let liberar;
+      const compuerta = new Promise((resolver) => { liberar = resolver; });
+      const recuperar = control.recuperar;
+      control.recuperar = async (sid) => {
+        await compuerta;
+        return recuperar(sid);
+      };
+
+      const primera = reconciliarApi();
+      while (consultas() < 1) await new Promise((resolver) => setImmediate(resolver));
+
+      const segunda = await reconciliarApi();
+      assert.equal(segunda.estado, 200);
+      assert.deepEqual(segunda.json.data, { estado: 'en_curso', revisados: 0, pagados: [], errores: 0 });
+      assert.match(segunda.json.message, /en curso/);
+      assert.equal(consultas(), 1, 'la ronda en curso es la única que consulta Stripe');
+
+      liberar();
+      const resultado = await primera;
+      assert.equal(resultado.json.data.estado, 'completada');
+      assert.deepEqual(resultado.json.data.pagados, [id]);
+    });
+
+    test('una ronda que falla no frena la siguiente ni deja la reconciliación bloqueada', async (t) => {
+      relojControlado();
+      await pedidoConSesion();
+      t.mock.method(console, 'error', () => {});
+      const consultar = pool.query;
+      t.mock.method(pool, 'query', async (...args) => {
+        if (String(args[0]).includes('stripe_session_id IS NOT NULL')) throw new Error('Fallo simulado de BD');
+        return consultar.apply(pool, args);
+      });
+
+      assert.equal((await reconciliarApi()).estado, 500);
+      t.mock.restoreAll();
+
+      const r = await reconciliarApi();
+      assert.equal(r.estado, 200);
+      assert.equal(r.json.data.estado, 'completada');
+    });
+
+    test('el temporizador no respeta la espera del endpoint pero tampoco se solapa con una ronda en curso', async () => {
+      relojControlado();
+      await pedidoConSesion();
+      control.llamadas.length = 0;
+      await reconciliarApi(); // El endpoint acaba de consultar
+      assert.equal(consultas(), 1);
+
+      // Una ronda con espera respetada devuelve el resultado anterior...
+      assert.equal((await reconciliarPagos()).estado, 'reciente');
+      // ...pero la del temporizador (respetarEspera: false) consulta de nuevo
+      assert.equal((await reconciliarPagos({ respetarEspera: false })).estado, 'completada');
+      assert.equal(consultas(), 2);
+    });
   });
 });
 
