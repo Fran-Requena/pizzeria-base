@@ -38,7 +38,8 @@ defaults:
 jobs:
   compilar:
     name: Compilar y probar
-    runs-on: ubuntu-latest
+    # Fijado a 24.04: ubuntu-latest migra a 26.04 entre el 19-10-2026 y el 19-11-2026. Revisar tras probar con ubuntu-26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Descargar el código
@@ -74,7 +75,8 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/app-'))
-    runs-on: ubuntu-latest
+    # Fijado a 24.04: ubuntu-latest migra a 26.04 entre el 19-10-2026 y el 19-11-2026. Revisar tras probar con ubuntu-26.04.
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     # Evita que dos publicaciones simultáneas se pisen la Release.
@@ -112,7 +114,8 @@ jobs:
     name: APK de release firmado
     needs: compilar
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    # Fijado a 24.04: ubuntu-latest migra a 26.04 entre el 19-10-2026 y el 19-11-2026. Revisar tras probar con ubuntu-26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
