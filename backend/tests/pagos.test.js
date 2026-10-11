@@ -53,11 +53,19 @@ const crearSesion = (cuerpo) => pedir(api.url, 'POST', '/api/pagos/crear-sesion'
 const cobrar = (id, cuerpo, metodo = 'PUT') => pedir(api.url, metodo, `/api/pedidos/${id}/cobro`, cuerpo);
 
 /** Evento checkout.session.completed como el que envía Stripe. */
-const eventoCompletado = (pedidoId, sesionId = 'cs_test_webhook') =>
+const eventoCompletado = (pedidoId, sesionId = 'cs_test_webhook', paymentStatus = 'paid') =>
   JSON.stringify({
     id: `evt_${pedidoId}`,
     type: 'checkout.session.completed',
-    data: { object: { id: sesionId, client_reference_id: String(pedidoId), metadata: { pedido_id: String(pedidoId) } } },
+    data: {
+      object: {
+        id: sesionId,
+        status: 'complete',
+        payment_status: paymentStatus,
+        client_reference_id: String(pedidoId),
+        metadata: { pedido_id: String(pedidoId) },
+      },
+    },
   });
 
 const enviarWebhook = (payload, cabeceras = {}, ruta = '/api/pagos/webhook') =>
@@ -371,17 +379,31 @@ describe('PUT/POST /api/pedidos/:id/cobro', () => {
 });
 
 describe('POST /api/pagos/webhook', () => {
-  test('sin secreto configurado acepta el evento sin verificar y marca el pedido como pagado', async () => {
+  test('sin secreto configurado acepta el evento sin verificar, registra un aviso y marca el pedido como pagado', async (t) => {
     const id = await crearPedido();
+    const avisos = t.mock.method(console, 'warn', () => {});
 
     const r = await enviarWebhook(eventoCompletado(id));
     assert.equal(r.estado, 200);
     assert.deepEqual(r.json, { received: true });
+    assert.ok(avisos.mock.calls.some((c) => String(c.arguments[0]).includes('STRIPE_WEBHOOK_SECRET no está definido')));
 
     const p = await leerPedido(id);
     assert.equal(p.estado_pago, 'pagado');
     assert.equal(p.stripe_session_id, 'cs_test_webhook');
     assert.equal(p.estado, 'pendiente', 'el webhook no cambia el estado del pedido');
+  });
+
+  test('no marca el pedido como pagado si payment_status no es "paid"', async () => {
+    const id = await crearPedido();
+
+    const r = await enviarWebhook(eventoCompletado(id, 'cs_en_proceso', 'unpaid'));
+    assert.equal(r.estado, 200);
+    assert.deepEqual(r.json, { received: true });
+
+    const p = await leerPedido(id);
+    assert.equal(p.estado_pago, 'pendiente');
+    assert.equal(p.stripe_session_id, null);
   });
 
   test('con secreto y firma válida marca el pedido como pagado', async () => {
@@ -406,13 +428,15 @@ describe('POST /api/pagos/webhook', () => {
     assert.equal((await leerPedido(id)).estado_pago, 'pendiente');
   });
 
-  test('[actual] con secreto pero sin cabecera stripe-signature acepta el evento sin verificar', async () => {
+  test('con secreto y sin cabecera stripe-signature responde 400 en texto plano y no marca el pago', async () => {
     process.env.STRIPE_WEBHOOK_SECRET = SECRETO;
     const id = await crearPedido();
 
     const r = await enviarWebhook(eventoCompletado(id));
-    assert.equal(r.estado, 200);
-    assert.equal((await leerPedido(id)).estado_pago, 'pagado');
+    assert.equal(r.estado, 400);
+    assert.equal(r.json, null);
+    assert.equal(r.texto, 'Webhook Error: falta la cabecera stripe-signature');
+    assert.equal((await leerPedido(id)).estado_pago, 'pendiente');
   });
 
   test('un evento duplicado se acepta dos veces (200) sin error y el pedido sigue pagado', async () => {
@@ -482,5 +506,81 @@ describe('POST /api/pagos/webhook', () => {
     const r = await enviarWebhook(eventoCompletado(id), {}, '/api/webhooks/stripe');
     assert.equal(r.estado, 200);
     assert.equal((await leerPedido(id)).estado_pago, 'pagado');
+  });
+});
+
+describe('POST /api/pagos/confirmar-sesion', () => {
+  const confirmar = (cuerpo) => pedir(api.url, 'POST', '/api/pagos/confirmar-sesion', cuerpo);
+
+  test('responde 400 sin session_id ni pedido_id', async () => {
+    const r = await confirmar({});
+    assert.equal(r.estado, 400);
+    assert.equal(r.json.message, 'Falta session_id o pedido_id');
+  });
+
+  test('marca el pedido como pagado si la sesión está pagada y es del pedido (como el retorno de Stripe)', async () => {
+    const id = await crearPedido();
+    const s = await crearSesion({ pedido_id: id });
+    control.pagar(s.json.sessionId);
+
+    // La web envía pedido_id como texto (lo lee de la URL de retorno)
+    const r = await confirmar({ pedido_id: String(id), session_id: s.json.sessionId });
+    assert.equal(r.estado, 200);
+    assert.deepEqual(r.json, { success: true, estado_pago: 'pagado', pedido_id: String(id) });
+    assert.equal((await leerPedido(id)).estado_pago, 'pagado');
+  });
+
+  test('con solo pedido_id consulta la sesión guardada del pedido', async () => {
+    const id = await crearPedido();
+    const s = await crearSesion({ pedido_id: id });
+    control.pagar(s.json.sessionId);
+
+    const r = await confirmar({ pedido_id: id });
+    assert.equal(r.estado, 200);
+    assert.equal(r.json.estado_pago, 'pagado');
+    assert.equal(control.llamadasA('checkout.sessions.retrieve').at(-1).id, s.json.sessionId);
+    assert.equal((await leerPedido(id)).estado_pago, 'pagado');
+  });
+
+  test('si la sesión no está pagada devuelve su estado y no cambia nada', async () => {
+    const id = await crearPedido();
+    const s = await crearSesion({ pedido_id: id });
+
+    const r = await confirmar({ pedido_id: id, session_id: s.json.sessionId });
+    assert.equal(r.estado, 200);
+    assert.deepEqual(r.json, { success: true, estado_pago: 'unpaid', message: 'Estado actual en Stripe: unpaid' });
+    assert.equal((await leerPedido(id)).estado_pago, 'pendiente');
+  });
+
+  test('responde 409 y no cambia nada si la sesión pagada es de otro pedido', async (t) => {
+    const id = await crearPedido();
+    const otro = await crearPedido();
+    const s = await crearSesion({ pedido_id: otro });
+    control.pagar(s.json.sessionId);
+    t.mock.method(console, 'warn', () => {});
+
+    const r = await confirmar({ pedido_id: id, session_id: s.json.sessionId });
+    assert.equal(r.estado, 409);
+    assert.equal(r.json.success, false);
+    assert.equal(r.json.message, `La sesión de pago no pertenece al pedido #${id}`);
+
+    assert.equal((await leerPedido(id)).estado_pago, 'pendiente');
+    assert.equal((await leerPedido(id)).stripe_session_id, null);
+    assert.equal((await leerPedido(otro)).estado_pago, 'pendiente');
+  });
+
+  test('acepta la sesión si solo metadata.pedido_id coincide con el pedido', async () => {
+    const id = await crearPedido();
+    control.fijarSesion('cs_solo_metadata', {
+      status: 'complete',
+      payment_status: 'paid',
+      client_reference_id: null,
+      metadata: { pedido_id: String(id) },
+    });
+
+    const r = await confirmar({ pedido_id: id, session_id: 'cs_solo_metadata' });
+    assert.equal(r.estado, 200);
+    assert.equal(r.json.estado_pago, 'pagado');
+    assert.equal((await leerPedido(id)).stripe_session_id, 'cs_solo_metadata');
   });
 });

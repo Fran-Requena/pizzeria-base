@@ -32,6 +32,12 @@ export async function expirarSesionStripe(sessionId, pedidoId) {
 /** Indica si un error de Stripe significa que la sesión no existe (y no un fallo de red o de Stripe). */
 const esSesionInexistente = (error) => error?.code === 'resource_missing' || error?.statusCode === 404;
 
+/** Indica si una sesión de Checkout es del pedido (client_reference_id o metadata.pedido_id). */
+const sesionDelPedido = (session, pedidoId) =>
+  [session.client_reference_id, session.metadata?.pedido_id].some(
+    (valor) => valor !== null && valor !== undefined && String(valor) === String(pedidoId)
+  );
+
 /**
  * Marca un pedido como pagado por una sesión de Stripe. Es idempotente y detecta el
  * cobro doble: si el pedido ya estaba pagado con otra sesión (o en caja), no cambia
@@ -254,25 +260,34 @@ export const handleWebhook = async (req, res) => {
 
   let event;
 
-  try {
-    if (webhookSecret && sig) {
+  if (webhookSecret) {
+    // Con secreto configurado la firma es obligatoria (M-13)
+    if (!sig) {
+      console.error('⚠️ [Stripe Webhook] Evento rechazado: falta la cabecera stripe-signature.');
+      return res.status(400).send('Webhook Error: falta la cabecera stripe-signature');
+    }
+    try {
       const payload = req.rawBody || req.body;
       event = stripe.webhooks.constructEvent(payload, sig, webhookSecret);
-    } else {
-      // Si no hay firma o secret configurado (modo pruebas directas)
-      event = req.body;
+    } catch (err) {
+      console.error(`⚠️ [Stripe Webhook] Error en la firma del webhook: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
     }
-  } catch (err) {
-    console.error(`⚠️ [Stripe Webhook] Error en la firma del webhook: ${err.message}`);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+  } else {
+    // Sin secreto (modo pruebas directas) se acepta el evento sin verificar
+    console.warn('⚠️ [Stripe Webhook] STRIPE_WEBHOOK_SECRET no está definido: se acepta el evento SIN verificar la firma. Configúralo fuera de las pruebas.');
+    event = req.body;
   }
 
   try {
-    if (event.type === 'checkout.session.completed') {
+    if (event?.type === 'checkout.session.completed') {
       const session = event.data.object;
       const pedidoId = session.client_reference_id || session.metadata?.pedido_id;
 
-      if (pedidoId) {
+      if (session.payment_status !== 'paid') {
+        // Checkout completado sin el pago confirmado (por ejemplo, un adeudo bancario en proceso)
+        console.log(`ℹ️ [Stripe Webhook] Sesión ${session.id} del pedido #${pedidoId} completada con payment_status "${session.payment_status}": no se marca como pagado.`);
+      } else if (pedidoId) {
         await marcarPedidoPagado(pedidoId, session.id, 'Webhook');
       }
     }
@@ -314,14 +329,20 @@ export const confirmarSesion = async (req, res) => {
     // Consultar a Stripe el estado real de la sesión
     const session = await stripe.checkout.sessions.retrieve(targetSessionId);
 
+    // La sesión debe ser del pedido indicado: si no, se podría marcar como pagado
+    // un pedido con el pago de otro (M-13)
+    if (targetPedidoId && !sesionDelPedido(session, targetPedidoId)) {
+      console.warn(`⚠️ [Stripe Confirmación] La sesión ${session.id} no pertenece al pedido #${targetPedidoId}: no se cambia nada.`);
+      return res.status(409).json({
+        success: false,
+        message: `La sesión de pago no pertenece al pedido #${targetPedidoId}`,
+      });
+    }
+
     if (session.payment_status === 'paid') {
       const finalPedidoId = targetPedidoId || session.client_reference_id || session.metadata?.pedido_id;
       if (finalPedidoId) {
-        await query(
-          `UPDATE pedidos SET estado_pago = 'pagado', stripe_session_id = $1 WHERE id = $2`,
-          [session.id, parseInt(finalPedidoId, 10)]
-        );
-        console.log(`✅ [Stripe Confirmación] Pedido #${finalPedidoId} confirmado y marcado como PAGADO.`);
+        await marcarPedidoPagado(finalPedidoId, session.id, 'Confirmación');
         return res.json({ success: true, estado_pago: 'pagado', pedido_id: finalPedidoId });
       }
     }
