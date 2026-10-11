@@ -27,6 +27,7 @@ export const control = {
   crear: crearPorDefecto,
   recuperar: recuperarPorDefecto,
   reiniciar() {
+    contadorSesiones = 0;
     this.llamadas.length = 0;
     this.crear = crearPorDefecto;
     this.recuperar = recuperarPorDefecto;
