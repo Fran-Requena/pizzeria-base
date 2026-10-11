@@ -31,7 +31,8 @@ permissions:
 jobs:
   probar:
     name: Tests del backend
-    runs-on: ubuntu-latest
+    # Fijado a 24.04: ubuntu-latest migra a 26.04 entre el 19-10-2026 y el 19-11-2026. Revisar tras probar con ubuntu-26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     services:
