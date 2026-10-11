@@ -1,3 +1,4 @@
+import './soporte/entorno.js'; // protección de la base de datos (ver tests/soporte/registrar.js)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import pool, { query, testConnection } from '../src/config/db.js';

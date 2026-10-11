@@ -25,6 +25,7 @@ La app Android (carpeta app/) es un cliente nuevo de la misma API.
 - No ejecutes despliegues, docker compose up/down ni te conectes a RDS o AWS
   sin que yo te lo pida.
 - No leas los CSV de alumnos ni profesores (datos personales).
+- Tests del backend: `cd backend && npm test` (node:test, Stripe simulado; borran y recrean las tablas, así que exigen un PostgreSQL local o `TEST_ALLOW_REMOTE=1`); el CI es .github/workflows/backend.yml.
 - Tareas pequeñas, un commit por tarea.
 - Los cambios se hacen en ramas de trabajo, nunca en main. No hagas push sin que
   yo lo pida.
