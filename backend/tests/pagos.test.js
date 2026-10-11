@@ -50,6 +50,8 @@ async function crearPedido() {
 
 const crearSesion = (cuerpo) => pedir(api.url, 'POST', '/api/pagos/crear-sesion', cuerpo);
 
+const cobrar = (id, cuerpo, metodo = 'PUT') => pedir(api.url, metodo, `/api/pedidos/${id}/cobro`, cuerpo);
+
 /** Evento checkout.session.completed como el que envía Stripe. */
 const eventoCompletado = (pedidoId, sesionId = 'cs_test_webhook') =>
   JSON.stringify({
@@ -160,13 +162,51 @@ describe('POST /api/pagos/crear-sesion', () => {
     assert.equal((await leerPedido(id)).stripe_session_id, b.json.sessionId);
   });
 
-  test('[actual, hallazgo 7] crea la sesión aunque el pedido esté cancelado', async () => {
+  test('crear-sesion rechaza un pedido cancelado y no llama a Stripe', async () => {
     const id = await crearPedido();
     await pool.query(`UPDATE pedidos SET estado = 'cancelado' WHERE id = $1`, [id]);
 
     const r = await crearSesion({ pedido_id: id });
+    assert.equal(r.estado, 409);
+    assert.equal(r.json.success, false);
+    assert.equal(r.json.message, `El pedido #${id} está cancelado y no se puede cobrar`);
+    assert.equal(control.llamadas.length, 0);
+    assert.equal((await leerPedido(id)).stripe_session_id, null);
+  });
+});
+
+describe('PUT/POST /api/pedidos/:id/cobro', () => {
+  test('registra el cobro, cambia metodo_pago y devuelve el pedido con sus líneas', async () => {
+    const id = await crearPedido();
+
+    const r = await cobrar(id, { metodo_pago: 'efectivo_entrega', importe_entregado: 40, cambio: 7.5 });
     assert.equal(r.estado, 200);
-    assert.equal(control.llamadas.length, 1);
+    assert.equal(r.json.success, true);
+    assert.equal(r.json.data.estado_pago, 'pagado');
+    assert.equal(r.json.data.metodo_pago, 'efectivo_entrega');
+    assert.equal(r.json.data.lineas.length, 2);
+    assert.equal(r.json.detalles_cobro.importe_entregado, 40);
+    assert.equal(r.json.detalles_cobro.cambio, 7.5);
+  });
+
+  test('responde 404 si el pedido no existe', async () => {
+    const r = await cobrar(999999, { metodo_pago: 'efectivo_entrega' });
+    assert.equal(r.estado, 404);
+    assert.equal(r.json.message, 'Pedido #999999 no encontrado');
+  });
+
+  test('/cobro rechaza un pedido cancelado', async () => {
+    const id = await crearPedido();
+    await pool.query(`UPDATE pedidos SET estado = 'cancelado' WHERE id = $1`, [id]);
+
+    const r = await cobrar(id, { metodo_pago: 'efectivo_entrega' }, 'POST');
+    assert.equal(r.estado, 409);
+    assert.equal(r.json.success, false);
+    assert.equal(r.json.message, `El pedido #${id} está cancelado y no se puede cobrar`);
+
+    const p = await leerPedido(id);
+    assert.equal(p.estado_pago, 'pendiente');
+    assert.equal(p.metodo_pago, 'stripe');
   });
 });
 

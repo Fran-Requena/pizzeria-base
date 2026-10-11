@@ -394,17 +394,28 @@ export const registrarCobroPedido = async (req, res) => {
     const { id } = req.params;
     const { metodo_pago, importe_entregado, cambio } = req.body;
 
+    const previoRes = await query('SELECT id, estado FROM pedidos WHERE id = $1', [id]);
+    if (previoRes.rowCount === 0) {
+      return res.status(404).json({ success: false, message: `Pedido #${id} no encontrado` });
+    }
+
+    // Un pedido cancelado no se cobra (hallazgo 7)
+    if (previoRes.rows[0].estado === 'cancelado') {
+      return res.status(409).json({ success: false, message: `El pedido #${id} está cancelado y no se puede cobrar` });
+    }
+
+    // La condición sobre el estado evita cobrar un pedido cancelado entre la consulta y la actualización
     const sql = `
-      UPDATE pedidos 
+      UPDATE pedidos
       SET estado_pago = 'pagado',
           metodo_pago = COALESCE($1, metodo_pago)
-      WHERE id = $2 
+      WHERE id = $2 AND estado <> 'cancelado'
       RETURNING *
     `;
 
     const result = await query(sql, [metodo_pago || null, id]);
     if (result.rowCount === 0) {
-      return res.status(404).json({ success: false, message: `Pedido #${id} no encontrado` });
+      return res.status(409).json({ success: false, message: `El pedido #${id} está cancelado y no se puede cobrar` });
     }
 
     const pedido = result.rows[0];

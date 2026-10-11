@@ -62,6 +62,14 @@ export const crearSesionCheckout = async (req, res) => {
       });
     }
 
+    // Un pedido cancelado no se cobra (hallazgo 7): ni siquiera se llama a Stripe
+    if (pedido.estado === 'cancelado') {
+      return res.status(409).json({
+        success: false,
+        message: `El pedido #${pedido_id} está cancelado y no se puede cobrar`,
+      });
+    }
+
     // 2. Obtener las líneas del pedido con los nombres de las pizzas
     const lineasRes = await query(`
       SELECT lp.id, lp.cantidad, lp.precio_unitario, lp.notas, pz.nombre

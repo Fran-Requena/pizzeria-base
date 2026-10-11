@@ -26,11 +26,6 @@ describe('Hallazgo 5 (M-26): descuento no cobrado en Stripe', () => {
   test.todo('crear-sesion cobra en Stripe el total del pedido con su descuento, no la suma de las líneas a precio completo');
 });
 
-describe('Hallazgo 7 (M-26): cobro de pedidos cancelados', () => {
-  test.todo('crear-sesion rechaza un pedido cancelado y no llama a Stripe');
-  test.todo('/cobro rechaza un pedido cancelado');
-});
-
 describe('Hallazgo 10 (M-27): transiciones de estado libres', () => {
   test.todo('/estado rechaza las transiciones no permitidas (de entregado a pendiente, de cancelado a en_preparacion)');
   test.todo('/comanda rechaza las mismas transiciones no permitidas que /estado');
