@@ -7,11 +7,6 @@
  */
 import { describe, test } from 'node:test';
 
-describe('Hallazgo 1 (M-06): pagado en Stripe con el webhook caído', () => {
-  test.todo('un pedido pagado en Stripe queda marcado como pagado aunque el webhook no llegue (reconciliación desde el servidor)');
-  test.todo('la reconciliación encuentra la sesión pagada aunque stripe_session_id apunte a una sesión posterior');
-});
-
 describe('Hallazgo 10 (M-27): transiciones de estado libres', () => {
   test.todo('/estado rechaza las transiciones no permitidas (de entregado a pendiente, de cancelado a en_preparacion)');
   test.todo('/comanda rechaza las mismas transiciones no permitidas que /estado');

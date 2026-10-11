@@ -358,3 +358,144 @@ export const confirmarSesion = async (req, res) => {
   }
 };
 
+
+// ─── Reconciliación de pagos (M-06) ────────────────────────────────────────
+// Si el webhook no llega (servidor caído, túnel cortado...), el pedido pagado se
+// quedaría pendiente y oculto en Cocina. La reconciliación consulta a Stripe solo la
+// sesión guardada de cada pedido pendiente y marca como pagados los que lo estén.
+
+// Pedidos revisados como máximo en cada ejecución (límite de llamadas a Stripe)
+const MAXIMO_RECONCILIACION = 20;
+const MINUTOS_RECONCILIACION_POR_DEFECTO = 2;
+
+let temporizadorReconciliacion = null;
+
+/**
+ * Revisa los pedidos pendientes de pago con sesión de Stripe creados en las últimas
+ * 24 horas (como mucho MAXIMO_RECONCILIACION, los más recientes primero).
+ * Un fallo con una sesión se registra y no detiene las demás.
+ * Devuelve { revisados, pagados: [ids marcados como pagados], errores }.
+ */
+export async function reconciliarPagos() {
+  if (!stripe) {
+    throw new Error('Stripe no configurado');
+  }
+
+  const pendientes = await query(
+    `SELECT id, stripe_session_id
+     FROM pedidos
+     WHERE estado_pago = 'pendiente'
+       AND stripe_session_id IS NOT NULL
+       AND fecha >= LOCALTIMESTAMP - INTERVAL '24 hours'
+     ORDER BY fecha DESC, id DESC
+     LIMIT $1`,
+    [MAXIMO_RECONCILIACION]
+  );
+
+  const resultado = { revisados: pendientes.rowCount, pagados: [], errores: 0 };
+
+  for (const pedido of pendientes.rows) {
+    try {
+      const session = await stripe.checkout.sessions.retrieve(pedido.stripe_session_id);
+      if (session.payment_status !== 'paid') continue;
+
+      if (!sesionDelPedido(session, pedido.id)) {
+        console.warn(`⚠️ [Stripe Reconciliación] La sesión ${session.id} guardada en el pedido #${pedido.id} es de otro pedido: no se cambia nada.`);
+        continue;
+      }
+
+      if ((await marcarPedidoPagado(pedido.id, session.id, 'Reconciliación')) === 'marcado') {
+        resultado.pagados.push(pedido.id);
+      }
+    } catch (error) {
+      resultado.errores++;
+      console.error(`❌ [Stripe Reconciliación] No se pudo revisar la sesión ${pedido.stripe_session_id} del pedido #${pedido.id}: ${error.message}`);
+    }
+  }
+
+  return resultado;
+}
+
+/**
+ * POST /api/pagos/reconciliar: ejecuta la reconciliación a demanda (por ejemplo,
+ * desde un botón "Comprobar pagos" en Caja).
+ */
+export const reconciliar = async (req, res) => {
+  if (!stripe) {
+    return res.status(503).json({ success: false, message: 'Stripe no configurado' });
+  }
+
+  try {
+    const resultado = await reconciliarPagos();
+    res.json({
+      success: true,
+      data: resultado,
+      message: `Revisados ${resultado.revisados} pedidos pendientes de pago; ${resultado.pagados.length} marcados como pagados.`,
+    });
+  } catch (error) {
+    console.error('❌ [Stripe Reconciliación] Error al reconciliar los pagos:', error.message);
+    res.status(500).json({ success: false, message: 'Error al reconciliar los pagos con Stripe', error: error.message });
+  }
+};
+
+/** Minutos entre ejecuciones según RECONCILIACION_MINUTOS (0 desactiva; vacío o no válido, el valor por defecto). */
+function leerMinutosReconciliacion() {
+  const valor = process.env.RECONCILIACION_MINUTOS?.trim();
+  if (!valor) return MINUTOS_RECONCILIACION_POR_DEFECTO;
+
+  const minutos = Number(valor);
+  if (!Number.isFinite(minutos) || minutos < 0) {
+    console.warn(`⚠️ [Stripe Reconciliación] RECONCILIACION_MINUTOS="${valor}" no es válido: se usan ${MINUTOS_RECONCILIACION_POR_DEFECTO} minutos.`);
+    return MINUTOS_RECONCILIACION_POR_DEFECTO;
+  }
+  return minutos;
+}
+
+/**
+ * Arranca la reconciliación periódica. Solo la llama server.js cuando se ejecuta
+ * directamente (no al importar la app en los tests) y solo actúa si Stripe está
+ * configurado. Los errores se registran y nunca tumban el proceso.
+ * Devuelve el temporizador, o null si no se arranca.
+ */
+export function iniciarReconciliacionPeriodica() {
+  if (!stripe) return null;
+  if (temporizadorReconciliacion) return temporizadorReconciliacion;
+
+  const minutos = leerMinutosReconciliacion();
+  if (minutos === 0) {
+    console.log('ℹ️ [Stripe Reconciliación] Desactivada (RECONCILIACION_MINUTOS=0).');
+    return null;
+  }
+
+  let enCurso = false;
+  temporizadorReconciliacion = setInterval(async () => {
+    if (enCurso) return; // La ejecución anterior aún no ha terminado
+    enCurso = true;
+    try {
+      const { pagados, errores } = await reconciliarPagos();
+      if (pagados.length > 0 || errores > 0) {
+        console.log(`🔄 [Stripe Reconciliación] Pedidos marcados como pagados: ${pagados.length ? pagados.join(', ') : 'ninguno'}; errores: ${errores}.`);
+      }
+    } catch (error) {
+      console.error('❌ [Stripe Reconciliación] Error en la ejecución periódica:', error.message);
+    } finally {
+      enCurso = false;
+    }
+  }, minutos * 60 * 1000);
+  // El temporizador no mantiene vivo el proceso por sí solo
+  temporizadorReconciliacion.unref();
+
+  console.log(`🔄 [Stripe Reconciliación] Activa cada ${minutos} minutos.`);
+  return temporizadorReconciliacion;
+}
+
+/** Detiene la reconciliación periódica (útil en los tests). */
+export function detenerReconciliacionPeriodica() {
+  if (temporizadorReconciliacion) {
+    clearInterval(temporizadorReconciliacion);
+    temporizadorReconciliacion = null;
+  }
+}
+
+/** Indica si la reconciliación periódica está en marcha. */
+export const reconciliacionPeriodicaActiva = () => temporizadorReconciliacion !== null;

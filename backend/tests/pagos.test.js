@@ -1,13 +1,18 @@
 /**
- * Caracterización (comportamiento ACTUAL) de los pagos con Stripe configurado.
+ * Pagos con Stripe configurado: crear-sesion, /cobro, webhook, confirmar-sesion y
+ * reconciliación. Incluye los hallazgos 1, 3, 4, 5 y 7 de MEJORAS.md (sección 11),
+ * ya corregidos, y el endurecimiento del webhook (M-13).
  * Stripe es un doble de pruebas (tests/soporte/stripe-doble.js): nunca se llama a la API real.
- * Los tests marcados "[actual, hallazgo N]" fijan comportamientos que MEJORAS.md
- * (sección 11) considera incorrectos; cambiarán cuando se arregle ese hallazgo.
  */
 import { describe, test, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { reiniciarEsquema, arrancarApp, pedir, pool, leerPedido } from './soporte/entorno.js';
 import { control, generarFirma } from './soporte/stripe-doble.js';
+import {
+  iniciarReconciliacionPeriodica,
+  detenerReconciliacionPeriodica,
+  reconciliacionPeriodicaActiva,
+} from '../src/controllers/pagosController.js';
 
 const SECRETO = 'whsec_doble_de_pruebas';
 
@@ -582,5 +587,132 @@ describe('POST /api/pagos/confirmar-sesion', () => {
     assert.equal(r.estado, 200);
     assert.equal(r.json.estado_pago, 'pagado');
     assert.equal((await leerPedido(id)).stripe_session_id, 'cs_solo_metadata');
+  });
+});
+
+describe('Reconciliación de pagos (M-06): POST /api/pagos/reconciliar', () => {
+  const reconciliarApi = () => pedir(api.url, 'POST', '/api/pagos/reconciliar');
+
+  // Saca de la ventana de 24 horas los pedidos de los tests anteriores
+  beforeEach(async () => {
+    await pool.query(`UPDATE pedidos SET fecha = fecha - INTERVAL '30 days'`);
+  });
+
+  /** Crea un pedido con su sesión de Stripe y devuelve { id, sesion }. */
+  async function pedidoConSesion() {
+    const id = await crearPedido();
+    const r = await crearSesion({ pedido_id: id });
+    assert.equal(r.estado, 200);
+    return { id, sesion: r.json.sessionId };
+  }
+
+  test('un pedido pagado en Stripe queda marcado como pagado aunque el webhook no llegue (reconciliación desde el servidor)', async () => {
+    const pagado = await pedidoConSesion();
+    const sinPagar = await pedidoConSesion();
+    control.pagar(pagado.sesion);
+
+    const r = await reconciliarApi();
+    assert.equal(r.estado, 200);
+    assert.equal(r.json.success, true);
+    assert.deepEqual(r.json.data, { revisados: 2, pagados: [pagado.id], errores: 0 });
+    assert.equal(typeof r.json.message, 'string');
+
+    assert.equal((await leerPedido(pagado.id)).estado_pago, 'pagado');
+    assert.equal((await leerPedido(sinPagar.id)).estado_pago, 'pendiente');
+  });
+
+  test('la reconciliación encuentra la sesión pagada porque crear-sesion nunca sustituye stripe_session_id mientras la sesión anterior se pueda pagar', async (t) => {
+    const { id, sesion } = await pedidoConSesion();
+    // Falla la expiración: crear-sesion responde 503 y el pedido conserva su sesión
+    control.expirar = () => {
+      throw new Error('Fallo simulado de Stripe');
+    };
+    t.mock.method(console, 'warn', () => {});
+    assert.equal((await crearSesion({ pedido_id: id })).estado, 503);
+    assert.equal((await leerPedido(id)).stripe_session_id, sesion);
+
+    // El cliente paga la primera sesión y el webhook no llega
+    control.pagar(sesion);
+
+    const r = await reconciliarApi();
+    assert.deepEqual(r.json.data.pagados, [id]);
+    const p = await leerPedido(id);
+    assert.equal(p.estado_pago, 'pagado');
+    assert.equal(p.stripe_session_id, sesion);
+  });
+
+  test('solo revisa pedidos pendientes con sesión de las últimas 24 horas, como mucho 20', async () => {
+    const recientes = [];
+    for (let i = 0; i < 21; i++) recientes.push(await pedidoConSesion());
+
+    const antiguo = await pedidoConSesion();
+    await pool.query(`UPDATE pedidos SET fecha = fecha - INTERVAL '25 hours' WHERE id = $1`, [antiguo.id]);
+    const yaPagado = await pedidoConSesion();
+    await pool.query(`UPDATE pedidos SET estado_pago = 'pagado' WHERE id = $1`, [yaPagado.id]);
+    await crearPedido(); // Sin sesión de Stripe
+    control.llamadas.length = 0;
+
+    const r = await reconciliarApi();
+    assert.equal(r.json.data.revisados, 20);
+
+    const consultadas = control.llamadasA('checkout.sessions.retrieve').map((l) => l.id);
+    assert.equal(consultadas.length, 20);
+    assert.ok(!consultadas.includes(antiguo.sesion), 'no revisa pedidos de hace más de 24 horas');
+    assert.ok(!consultadas.includes(yaPagado.sesion), 'no revisa pedidos ya pagados');
+    assert.ok(!consultadas.includes(recientes[0].sesion), 'empieza por los más recientes');
+  });
+
+  test('si falla la consulta de una sesión, la registra y sigue con las demás', async (t) => {
+    const falla = await pedidoConSesion();
+    const pagado = await pedidoConSesion();
+    control.pagar(pagado.sesion);
+    const recuperar = control.recuperar;
+    control.recuperar = (sid) => {
+      if (sid === falla.sesion) throw new Error('Fallo simulado de red');
+      return recuperar(sid);
+    };
+    const errores = t.mock.method(console, 'error', () => {});
+
+    const r = await reconciliarApi();
+    assert.equal(r.estado, 200);
+    assert.deepEqual(r.json.data, { revisados: 2, pagados: [pagado.id], errores: 1 });
+    assert.ok(errores.mock.calls.some((c) => String(c.arguments[0]).includes(`#${falla.id}`)));
+  });
+
+  test('no marca un pedido cuya sesión guardada es de otro pedido', async (t) => {
+    const { id } = await pedidoConSesion();
+    control.fijarSesion('cs_ajena', { status: 'complete', payment_status: 'paid', client_reference_id: '1', metadata: { pedido_id: '1' } });
+    await pool.query(`UPDATE pedidos SET stripe_session_id = 'cs_ajena' WHERE id = $1`, [id]);
+    t.mock.method(console, 'warn', () => {});
+
+    const r = await reconciliarApi();
+    assert.deepEqual(r.json.data.pagados, []);
+    assert.equal((await leerPedido(id)).estado_pago, 'pendiente');
+  });
+});
+
+describe('Reconciliación periódica (M-06)', () => {
+  afterEach(() => {
+    detenerReconciliacionPeriodica();
+    delete process.env.RECONCILIACION_MINUTOS;
+  });
+
+  test('no se arranca al importar la app (solo al ejecutar server.js directamente)', () => {
+    assert.equal(reconciliacionPeriodicaActiva(), false);
+  });
+
+  test('RECONCILIACION_MINUTOS=0 la desactiva', () => {
+    process.env.RECONCILIACION_MINUTOS = '0';
+    assert.equal(iniciarReconciliacionPeriodica(), null);
+    assert.equal(reconciliacionPeriodicaActiva(), false);
+  });
+
+  test('con Stripe configurado arranca un temporizador que no mantiene vivo el proceso', () => {
+    process.env.RECONCILIACION_MINUTOS = '5';
+    const temporizador = iniciarReconciliacionPeriodica();
+    assert.ok(temporizador);
+    assert.equal(temporizador.hasRef(), false);
+    assert.equal(reconciliacionPeriodicaActiva(), true);
+    assert.equal(iniciarReconciliacionPeriodica(), temporizador, 'no arranca un segundo temporizador');
   });
 });
