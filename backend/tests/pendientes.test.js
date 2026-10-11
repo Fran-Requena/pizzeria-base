@@ -12,11 +12,6 @@ describe('Hallazgo 1 (M-06): pagado en Stripe con el webhook caído', () => {
   test.todo('la reconciliación encuentra la sesión pagada aunque stripe_session_id apunte a una sesión posterior');
 });
 
-describe('Hallazgo 3 (M-26): varias sesiones de Stripe vivas', () => {
-  test.todo('crear-sesion reutiliza la sesión abierta del pedido o expira la anterior: nunca hay dos sesiones cobrables a la vez');
-  test.todo('un segundo pago de Stripe del mismo pedido queda registrado y se detecta');
-});
-
 describe('Hallazgo 10 (M-27): transiciones de estado libres', () => {
   test.todo('/estado rechaza las transiciones no permitidas (de entregado a pendiente, de cancelado a en_preparacion)');
   test.todo('/comanda rechaza las mismas transiciones no permitidas que /estado');

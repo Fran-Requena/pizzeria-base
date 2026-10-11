@@ -178,15 +178,96 @@ describe('POST /api/pagos/crear-sesion', () => {
     assert.equal((await leerPedido(id)).stripe_session_id, null);
   });
 
-  test('[actual, hallazgo 3] cada llamada crea una sesión nueva y el pedido guarda solo la última', async () => {
+  test('crear-sesion expira la sesión abierta anterior antes de crear otra: nunca hay dos sesiones cobrables a la vez', async () => {
     const id = await crearPedido();
 
     const a = await crearSesion({ pedido_id: id });
     const b = await crearSesion({ pedido_id: id });
-
+    assert.equal(b.estado, 200);
     assert.notEqual(a.json.sessionId, b.json.sessionId);
-    assert.equal(control.llamadas.length, 2);
+
+    assert.deepEqual(
+      control.llamadas.map((l) => l.metodo),
+      ['checkout.sessions.create', 'checkout.sessions.retrieve', 'checkout.sessions.expire', 'checkout.sessions.create']
+    );
+    assert.equal(control.sesiones.get(a.json.sessionId).status, 'expired');
+    assert.equal(control.sesiones.get(b.json.sessionId).status, 'open');
     assert.equal((await leerPedido(id)).stripe_session_id, b.json.sessionId);
+  });
+
+  test('si la sesión anterior está pagada, marca el pedido como pagado y responde 400 "ya fue pagado"', async () => {
+    const id = await crearPedido();
+    const a = await crearSesion({ pedido_id: id });
+    control.pagar(a.json.sessionId); // El cliente pagó, pero el webhook no llegó
+
+    const r = await crearSesion({ pedido_id: id });
+    assert.equal(r.estado, 400);
+    assert.equal(r.json.message, `El pedido #${id} ya fue pagado anteriormente`);
+    assert.equal(control.llamadasA('checkout.sessions.create').length, 1);
+
+    const p = await leerPedido(id);
+    assert.equal(p.estado_pago, 'pagado');
+    assert.equal(p.stripe_session_id, a.json.sessionId);
+  });
+
+  test('si la sesión anterior ya caducó, crea otra sin intentar expirarla', async () => {
+    const id = await crearPedido();
+    const a = await crearSesion({ pedido_id: id });
+    control.caducar(a.json.sessionId);
+
+    const r = await crearSesion({ pedido_id: id });
+    assert.equal(r.estado, 200);
+    assert.equal(control.llamadasA('checkout.sessions.expire').length, 0);
+    assert.equal((await leerPedido(id)).stripe_session_id, r.json.sessionId);
+  });
+
+  test('si la sesión anterior no existe en Stripe, crea otra', async () => {
+    const id = await crearPedido();
+    await pool.query(`UPDATE pedidos SET stripe_session_id = 'cs_borrada' WHERE id = $1`, [id]);
+
+    const r = await crearSesion({ pedido_id: id });
+    assert.equal(r.estado, 200);
+    assert.equal((await leerPedido(id)).stripe_session_id, r.json.sessionId);
+  });
+
+  test('si Stripe falla al consultar la sesión anterior, responde 503 y no crea otra', async (t) => {
+    const id = await crearPedido();
+    const a = await crearSesion({ pedido_id: id });
+    control.recuperar = () => {
+      throw new Error('Fallo simulado de red');
+    };
+    t.mock.method(console, 'error', () => {});
+
+    const r = await crearSesion({ pedido_id: id });
+    assert.equal(r.estado, 503);
+    assert.equal(r.json.success, false);
+    assert.equal(control.llamadasA('checkout.sessions.create').length, 1);
+    assert.equal((await leerPedido(id)).stripe_session_id, a.json.sessionId);
+  });
+
+  test('si no puede expirar la sesión anterior, responde 503 y no crea otra', async (t) => {
+    const id = await crearPedido();
+    const a = await crearSesion({ pedido_id: id });
+    control.expirar = () => {
+      throw new Error('Fallo simulado de Stripe');
+    };
+    t.mock.method(console, 'warn', () => {});
+
+    const r = await crearSesion({ pedido_id: id });
+    assert.equal(r.estado, 503);
+    assert.equal(control.llamadasA('checkout.sessions.create').length, 1);
+    assert.equal((await leerPedido(id)).stripe_session_id, a.json.sessionId);
+  });
+
+  test('si la sesión anterior está completada pero sin pagar (pago en proceso), responde 409 y no crea otra', async () => {
+    const id = await crearPedido();
+    const a = await crearSesion({ pedido_id: id });
+    control.fijarSesion(a.json.sessionId, { status: 'complete', payment_status: 'unpaid' });
+
+    const r = await crearSesion({ pedido_id: id });
+    assert.equal(r.estado, 409);
+    assert.match(r.json.message, /se está procesando en Stripe/);
+    assert.equal(control.llamadasA('checkout.sessions.create').length, 1);
   });
 
   test('crear-sesion rechaza un pedido cancelado y no llama a Stripe', async () => {
@@ -348,6 +429,38 @@ describe('POST /api/pagos/webhook', () => {
     const p = await leerPedido(id);
     assert.equal(p.estado_pago, 'pagado');
     assert.equal(p.stripe_session_id, 'cs_test_webhook');
+  });
+
+  test('un segundo pago de Stripe del mismo pedido queda registrado y se detecta', async (t) => {
+    const id = await crearPedido();
+    await enviarWebhook(eventoCompletado(id, 'cs_primer_pago'));
+    const avisos = t.mock.method(console, 'warn', () => {});
+
+    const r = await enviarWebhook(eventoCompletado(id, 'cs_segundo_pago'));
+    assert.equal(r.estado, 200);
+
+    const p = await leerPedido(id);
+    assert.equal(p.estado_pago, 'pagado');
+    assert.equal(p.stripe_session_id, 'cs_primer_pago', 'no se sustituye la sesión del primer pago');
+
+    const aviso = avisos.mock.calls.map((c) => String(c.arguments[0])).find((m) => m.includes('cobro doble'));
+    assert.ok(aviso, 'se registra un aviso de cobro doble');
+    assert.ok(aviso.includes(`#${id}`) && aviso.includes('cs_primer_pago') && aviso.includes('cs_segundo_pago'));
+  });
+
+  test('un pago de Stripe de un pedido ya cobrado en caja se registra como posible cobro doble', async (t) => {
+    const id = await crearPedido();
+    const sesion = await crearSesion({ pedido_id: id });
+    control.expirar = () => {
+      throw new Error('Fallo simulado de Stripe');
+    };
+    const avisos = t.mock.method(console, 'warn', () => {});
+    await cobrar(id, { metodo_pago: 'efectivo_entrega' });
+
+    const r = await enviarWebhook(eventoCompletado(id, sesion.json.sessionId));
+    assert.equal(r.estado, 200);
+    assert.equal((await leerPedido(id)).metodo_pago, 'efectivo_entrega');
+    assert.ok(avisos.mock.calls.some((c) => String(c.arguments[0]).includes('cobro doble')));
   });
 
   test('ignora (200) los eventos de otro tipo', async () => {

@@ -29,6 +29,49 @@ export async function expirarSesionStripe(sessionId, pedidoId) {
   }
 }
 
+/** Indica si un error de Stripe significa que la sesión no existe (y no un fallo de red o de Stripe). */
+const esSesionInexistente = (error) => error?.code === 'resource_missing' || error?.statusCode === 404;
+
+/**
+ * Marca un pedido como pagado por una sesión de Stripe. Es idempotente y detecta el
+ * cobro doble: si el pedido ya estaba pagado con otra sesión (o en caja), no cambia
+ * nada y lo deja registrado en el log con el pedido y las dos sesiones.
+ * Devuelve 'marcado', 'ya_pagado', 'segundo_pago' o 'no_existe'.
+ */
+async function marcarPedidoPagado(pedidoId, sessionId, origen) {
+  const id = parseInt(pedidoId, 10);
+  const actualizado = await query(
+    `UPDATE pedidos
+     SET estado_pago = 'pagado',
+         stripe_session_id = $1
+     WHERE id = $2 AND estado_pago IS DISTINCT FROM 'pagado'
+     RETURNING id`,
+    [sessionId, id]
+  );
+  if (actualizado.rowCount > 0) {
+    console.log(`✅ [Stripe ${origen}] Pedido #${id} marcado como PAGADO (sesión ${sessionId}).`);
+    return 'marcado';
+  }
+
+  const previo = await query('SELECT stripe_session_id, metodo_pago FROM pedidos WHERE id = $1', [id]);
+  if (previo.rowCount === 0) {
+    console.warn(`⚠️ [Stripe ${origen}] La sesión ${sessionId} es del pedido #${id}, que no existe.`);
+    return 'no_existe';
+  }
+
+  const { stripe_session_id: sesionGuardada, metodo_pago: metodoPago } = previo.rows[0];
+  if (sesionGuardada === sessionId && metodoPago === 'stripe') {
+    return 'ya_pagado'; // Mismo pago notificado otra vez (reintento del webhook, sondeo...)
+  }
+
+  console.warn(
+    `🚨 [Stripe ${origen}] Posible cobro doble del pedido #${id}: ya estaba pagado ` +
+      `(metodo_pago ${metodoPago}, sesión guardada ${sesionGuardada || 'ninguna'}) y Stripe confirma ` +
+      `el pago de la sesión ${sessionId}. No se cambia nada; revisa el reembolso en Stripe.`
+  );
+  return 'segundo_pago';
+}
+
 /**
  * Consulta el estado de configuración de la pasarela Stripe (útil para diagnóstico en clase)
  */
@@ -113,6 +156,47 @@ export const crearSesionCheckout = async (req, res) => {
     }
     const lineItems = lineasParaStripe(pedido, lineasRes.rows);
 
+    // 4. Una sola sesión viva por pedido (hallazgo 3): antes de crear otra se consulta la anterior
+    if (pedido.stripe_session_id) {
+      let anterior = null;
+      try {
+        anterior = await stripe.checkout.sessions.retrieve(pedido.stripe_session_id);
+      } catch (error) {
+        if (!esSesionInexistente(error)) {
+          console.error(`❌ [Stripe] No se pudo consultar la sesión ${pedido.stripe_session_id} del pedido #${pedido.id}:`, error.message);
+          return res.status(503).json({
+            success: false,
+            message: `No se pudo comprobar con Stripe la sesión de pago anterior del pedido #${pedido_id}. Inténtalo de nuevo en unos segundos.`,
+          });
+        }
+        // La sesión anterior ya no existe en Stripe: se puede crear otra
+      }
+
+      if (anterior?.payment_status === 'paid') {
+        // Pagado aunque el webhook no llegara: se marca ahora y no se cobra otra vez
+        await marcarPedidoPagado(pedido.id, anterior.id, 'crear-sesion');
+        return res.status(400).json({
+          success: false,
+          message: `El pedido #${pedido_id} ya fue pagado anteriormente`,
+        });
+      }
+
+      if (anterior?.status === 'open') {
+        if (!(await expirarSesionStripe(anterior.id, pedido.id))) {
+          return res.status(503).json({
+            success: false,
+            message: `No se pudo cerrar en Stripe la sesión de pago anterior del pedido #${pedido_id}. Inténtalo de nuevo en unos segundos.`,
+          });
+        }
+      } else if (anterior && anterior.status !== 'expired') {
+        // Completada pero sin pagar: el pago se está procesando (por ejemplo, un adeudo bancario)
+        return res.status(409).json({
+          success: false,
+          message: `El pago del pedido #${pedido_id} se está procesando en Stripe. Espera a que se confirme antes de intentarlo de nuevo.`,
+        });
+      }
+    }
+
     // Determinar la URL base de retorno (prioridad: FRONTEND_URL > cabeceras proxy > host)
     let frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/+$/, '') : null;
     if (!frontendUrl) {
@@ -121,7 +205,7 @@ export const crearSesionCheckout = async (req, res) => {
       frontendUrl = `${proto}://${host}`.replace(/:3000$/, '');
     }
 
-    // 4. Crear sesión en Stripe (utilizando Dynamic Payment Methods de Stripe)
+    // 5. Crear sesión en Stripe (utilizando Dynamic Payment Methods de Stripe)
     const session = await stripe.checkout.sessions.create({
       line_items: lineItems,
       mode: 'payment',
@@ -135,7 +219,7 @@ export const crearSesionCheckout = async (req, res) => {
       cancel_url: `${frontendUrl}/?pago=cancelado&pedido_id=${pedido.id}`,
     });
 
-    // 5. Guardar el ID de sesión en el pedido para trazabilidad
+    // 6. Guardar el ID de sesión en el pedido para trazabilidad
     await query('UPDATE pedidos SET stripe_session_id = $1, metodo_pago = $2 WHERE id = $3', [
       session.id,
       'stripe',
@@ -189,14 +273,7 @@ export const handleWebhook = async (req, res) => {
       const pedidoId = session.client_reference_id || session.metadata?.pedido_id;
 
       if (pedidoId) {
-        await query(
-          `UPDATE pedidos 
-           SET estado_pago = 'pagado', 
-               stripe_session_id = $1 
-           WHERE id = $2`,
-          [session.id, parseInt(pedidoId, 10)]
-        );
-        console.log(`✅ [Stripe Webhook] Pedido #${pedidoId} marcado como PAGADO tras confirmación de Stripe.`);
+        await marcarPedidoPagado(pedidoId, session.id, 'Webhook');
       }
     }
 
