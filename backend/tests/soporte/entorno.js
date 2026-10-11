@@ -2,7 +2,13 @@
  * Utilidades comunes de los tests del backend.
  */
 import { readFile } from 'node:fs/promises';
-import pool from '../../src/config/db.js';
+
+// Sin registrar.js no hay protección de la base de datos ni doble de Stripe: no seguir
+if (!globalThis.__entornoTestsBackend) {
+  throw new Error('Ejecuta los tests del backend con "npm test" (carga tests/soporte/registrar.js).');
+}
+
+const { default: pool } = await import('../../src/config/db.js');
 
 export { pool };
 
@@ -13,6 +19,7 @@ const TABLAS = ['lineas_pedido', 'pedidos', 'pizza_ingredientes', 'ingredientes'
 
 /** Borra las tablas de la pizzería y las vuelve a crear con database/init.sql. */
 export async function reiniciarEsquema() {
+  console.warn(`⚠️  Reiniciando el esquema de ${process.env.TEST_DESTINO_BD}: se borran las tablas y se cargan de nuevo con database/init.sql.`);
   await pool.query(`DROP TABLE IF EXISTS ${TABLAS.join(', ')} CASCADE`);
   await pool.query(await readFile(INIT_SQL, 'utf8'));
 }
