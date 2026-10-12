@@ -8,6 +8,9 @@
 .env.production
 *.env
 
+# Claves de acceso a /dbgate/ (HTTP Basic Auth de Nginx): las crea cada alumno
+.htpasswd
+
 # Documentación docente privada, informes y prácticas
 docs/
 backups/

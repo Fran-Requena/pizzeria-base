@@ -61,48 +61,35 @@ Para que los alumnos puedan seguir entrando con un clic desde el navegador de AW
 
 ---
 
-### Reto 1.2: Hardening de DbGate (Adiós a `SKIP_ALL_AUTH`)
+### Reto 1.2: Auditar la puerta de DbGate (`SKIP_ALL_AUTH` y Nginx)
 
-#### 🔴 El Problema Detectado
-En `docker-compose.db.yml`, el gestor web visual de base de datos se configuró con:
+#### 🟡 El Punto a Revisar
+En `docker-compose.db.yml`, el gestor web visual de base de datos se configura con:
 ```yaml
 - SKIP_ALL_AUTH=true
 ```
-* **Riesgo real:** Cualquiera que descubra la ruta `/dbgate/` entra directamente a administrar la base de datos con privilegios totales, pudiendo ver contraseñas, borrar clientes o descargar la base de datos completa con un solo clic.
-* Depender de un `auth_basic` opcional en Nginx es una mala práctica: **la seguridad debe aplicarse en la propia aplicación (Defense in Depth)**.
+* **Riesgo si estuviera mal protegido:** cualquiera que descubra la ruta `/dbgate/` entraría directamente a administrar la base de datos con privilegios totales, pudiendo ver datos de clientes, borrar pedidos o descargar la base de datos completa con un solo clic.
+* **Decisión de diseño del proyecto:** DbGate va **sin login propio** (`SKIP_ALL_AUTH=true`) porque solo es alcanzable a través de Nginx, que exige usuario y contraseña (`auth_basic` con `.htpasswd`, ver P05). Una sola puerta bien vigilada es más fácil de auditar que dos logins distintos.
 
-#### 🟢 La Solución de Hardening
-DbGate soporta autenticación nativa por variables de entorno.
+#### 🟢 Qué debes comprobar (auditoría)
+1. **La puerta de Nginx exige credenciales:**
+   ```bash
+   curl -sI https://<TU_SUBDOMINIO>/dbgate/ | grep -E "HTTP|WWW-Authenticate"
+   ```
+   Debe responder `401` con `WWW-Authenticate: Basic ...`.
+2. **DbGate no tiene ningún puerto publicado** (no se puede entrar saltándose Nginx):
+   ```bash
+   docker ps --format "table {{.Names}}\t{{.Ports}}" | grep dbgate
+   ```
+   Debe mostrar solo `3000/tcp`.
+3. **El archivo `.htpasswd` no está en Git** y no se puede leer desde fuera del servidor:
+   ```bash
+   git check-ignore -v .htpasswd
+   ```
+4. **Reflexión:** ¿qué ocurriría si alguien publicara el puerto 3000 de DbGate en el `docker-compose.db.yml`? ¿Qué capa de defensa se perdería?
 
-1. Abre `docker-compose.db.yml` en tu servidor:
-   ```bash
-   nano docker-compose.db.yml
-   ```
-2. En el servicio `dbgate`, elimina la línea `- SKIP_ALL_AUTH=true` y añade credenciales administrativas:
-   ```yaml
-     # 2. Gestor Visual Web de Base de Datos (DbGate)
-     dbgate:
-       image: dbgate/dbgate:latest
-       container_name: pizzeria-prod-dbgate
-       restart: unless-stopped
-       environment:
-         - WEB_ROOT=/dbgate
-         - LOGIN=${DBGATE_USER:-admin}
-         - PASSWORD=${DBGATE_PASS:-PizzeriaAdmin_2026!}
-         - CONNECTIONS=pizzeria
-         - LABEL_pizzeria=AWS RDS Bella Napoli
-         - SERVER_pizzeria=${DB_HOST}
-         - PORT_pizzeria=${DB_PORT:-5432}
-         - USER_pizzeria=${DB_USER}
-         - PASSWORD_pizzeria=${DB_PASSWORD}
-         - DATABASE_pizzeria=${DB_NAME}
-         - ENGINE_pizzeria=postgres@dbgate-plugin-postgres
-   ```
-3. Reinicia el contenedor:
-   ```bash
-   docker compose -f docker-compose.db.yml up -d dbgate
-   ```
-* **Resultado:** Al acceder a `/dbgate/`, la aplicación exige usuario y contraseña antes de mostrar cualquier tabla o dato.
+> **Nota:** las conexiones a bases de datos definidas con variables de entorno (`CONNECTIONS=...`) bloquean la edición desde la
+> interfaz y no admiten SSL, por lo que **no** son una opción válida para conectar DbGate a AWS RDS (ver P06 y la guía de despliegue directo).
 
 ---
 
@@ -119,7 +106,7 @@ El backend de Node.js Express se conecta a Amazon RDS utilizando el **Usuario Ma
 
 #### 🟢 La Solución de Hardening
 
-1. Entra en **DbGate** (`https://<tu-subdominio>/dbgate/`) con tu usuario maestro.
+1. Entra en **DbGate** (`https://<TU_SUBDOMINIO>/dbgate/`, con el usuario `admin` y la clave de administración) y abre la conexión `AWS RDS Bella Napoli`, que usa tu usuario maestro.
 2. Abre una **Nueva Consulta** (*New Query*) contra `pizzeria_db` y ejecuta el siguiente script SQL de blindaje:
 
 ```sql
@@ -128,7 +115,7 @@ El backend de Node.js Express se conecta a Amazon RDS utilizando el **Usuario Ma
 -- ==============================================================================
 
 -- 1. Crear el usuario de aplicación para la API
-CREATE USER pizzeria_app WITH PASSWORD 'PizzeriaApp_Secure_2026!';
+CREATE USER pizzeria_app WITH PASSWORD '<TU_CLAVE_APP>';  -- elige una clave propia, distinta de la maestra
 
 -- 2. Conceder derecho de conexión y uso del esquema
 GRANT CONNECT ON DATABASE pizzeria_db TO pizzeria_app;
@@ -154,7 +141,7 @@ GRANT USAGE, SELECT ON SEQUENCES TO pizzeria_app;
 3. Actualiza el archivo `.env` en tu servidor EC2 para que el backend utilice el nuevo usuario:
    ```ini
    DB_USER=pizzeria_app
-   DB_PASSWORD=PizzeriaApp_Secure_2026!
+   DB_PASSWORD=<TU_CLAVE_APP>
    ```
 4. Reinicia el backend:
    ```bash

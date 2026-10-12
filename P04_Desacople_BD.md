@@ -69,11 +69,19 @@ Conéctate a tu máquina en AWS mediante **EC2 Instance Connect** (o SSH) y sit�
 cd ~/pizzeria-base
 ```
 
-Descarga la última versión del repositorio con los nuevos archivos de orquestación desacoplados:
+Descarga la última versión del repositorio con los nuevos archivos de orquestación desacoplados. Las actualizaciones **no se traen con `git pull`**: se vuelve a clonar el proyecto y se copian tus claves (`.env` y `.htpasswd`):
 
 ```bash
-git pull origin main
+cd ~
+mv pizzeria-base pizzeria-base.anterior
+git clone https://github.com/guillermofoix/pizzeria-base.git
+cp pizzeria-base.anterior/.env pizzeria-base/.env
+cp pizzeria-base.anterior/.htpasswd pizzeria-base/.htpasswd
+cd pizzeria-base
 ```
+
+> Ejecuta el `down` del paso siguiente desde esta carpeta nueva: Compose deduce el nombre del proyecto del nombre de la carpeta, que sigue siendo `pizzeria-base`.  
+> **Ojo con los datos:** el stack de datos desacoplado usa su propio volumen (`pizzeria-db_pizzeria_prod_pgdata`), distinto del del monolito. La base de datos nueva arranca con los datos iniciales (`database/init.sql`); los pedidos de prueba de P01-P03 quedan en el volumen antiguo. [POR VERIFICAR EN LAB LIMPIO]
 
 Detén y retira los contenedores monolíticos anteriores. **IMPORTANTE:** No utilices la opción `-v` (volúmenes) para no perder los datos registrados en tu base de datos:
 
@@ -126,14 +134,17 @@ Ahora arrancamos **única y exclusivamente la base de datos PostgreSQL y su gest
 
 ### 1. Levantar el stack de datos
 ```bash
-docker compose -f docker-compose.db.yml up -d
+docker compose -f docker-compose.db.yml --profile local up -d
 ```
+
+> `--profile local` es necesario: en `docker-compose.db.yml` el servicio `db` pertenece al perfil `local` (en la práctica P06 se
+> apaga porque la base de datos pasa a AWS RDS). Sin ese indicador solo arrancaría DbGate. Recuerda usarlo también en `ps` y `stop`.
 
 ### 2. Verificar el estado de salud (*Healthcheck*)
 PostgreSQL dispone de un mecanismo de comprobación periódica (`pg_isready`). Espera 10 segundos y comprueba el estado:
 
 ```bash
-docker compose -f docker-compose.db.yml ps
+docker compose -f docker-compose.db.yml --profile local ps
 ```
 
 **Salida esperada:**
@@ -189,7 +200,11 @@ Para experimentar el verdadero valor de esta arquitectura profesional, realizare
 Abre tu navegador y entra a tu URL:  
 👉 **`https://daw-XX.guillermofoix.org`** (o `https://profe01...`)
 
-Realiza un pedido o consulta la tabla `pizzas` desde DbGate (`/dbgate/`).
+Realiza un pedido y comprueba que se ha guardado:
+```bash
+docker exec pizzeria-prod-db psql -U pizzeria_user -d pizzeria_db -c "SELECT id, estado, total FROM pedidos ORDER BY id DESC LIMIT 3;"
+```
+*(En este stack DbGate arranca sin ninguna conexión preconfigurada; si quieres usarlo, crea una conexión nueva con servidor `db`, puerto `5432` y las credenciales de tu `.env`.)*
 
 ### 2. Simular una actualización / caída completa de la aplicación
 En tu terminal de AWS, destruye por completo el stack de la aplicación web:
@@ -202,7 +217,7 @@ docker compose -f docker-compose.app.yml down
 Ejecuta:
 
 ```bash
-docker compose -f docker-compose.db.yml ps
+docker compose -f docker-compose.db.yml --profile local ps
 ```
 
 **Resultado:** `pizzeria-prod-db` sigue en ejecución (`Up healthy`) sin haberse enterado de que la web se ha caído.
@@ -238,7 +253,7 @@ Cuando finalices tu sesión de trabajo en AWS Academy:
 1. **Detener ambos stacks de forma ordenada:**
    ```bash
    docker compose -f docker-compose.app.yml stop
-   docker compose -f docker-compose.db.yml stop
+   docker compose -f docker-compose.db.yml --profile local stop
    ```
 2. En la consola de AWS EC2: Selecciona la instancia $\rightarrow$ **Estado de la instancia** $\rightarrow$ **Detener instancia** (*Stop instance*).
 3. **Recordatorio crítico:** NUNCA pulses *"End Lab"* en Vocareum si deseas conservar tu máquina para la Práctica 5.

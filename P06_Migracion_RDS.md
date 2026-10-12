@@ -112,15 +112,15 @@ Nuestra máquina **EC2 actuará como "Bastión"**: como está dentro de la misma
   > Configurar `pizzeria_user` en lugar de `postgres` permite mantener una paridad idéntica con el archivo `.env` del proyecto.
 * **Administración de credenciales:** **Autoadministrado** (*Self managed*).
 * **Generar contraseña automáticamente:** ❌ **Desmarcado**.
-* **Contraseña maestra:** **`pizzeria_pass_2026!`**
-* **Confirmar la contraseña maestra:** **`pizzeria_pass_2026!`**
+* **Contraseña maestra:** **`<TU_CLAVE_RDS>`** (elige una clave propia de al menos 12 caracteres y apúntala; AWS no admite `/`, `"`, `@` ni espacios, y para evitar problemas con Docker no uses `$`, `#` ni comillas)
+* **Confirmar la contraseña maestra:** la misma `<TU_CLAVE_RDS>`
 * **Opciones de autenticación de bases de datos:** **Autenticación con contraseña**.
 
 ---
 
 ### 4. Configuración de la Instancia y Almacenamiento (FinOps)
 * **Clase de instancia de base de datos:** **Clases ampliables (incluye clases t)** $\rightarrow$ **`db.t4g.micro`** (2 vCPUs, 1 GiB RAM) o `db.t3.micro`.
-* **Tipo de almacenamiento:** **SSD de uso general (gp2)** o **gp3**.
+* **Tipo de almacenamiento:** **SSD de uso general (gp3)**.
 * **Almacenamiento asignado:** **20** GiB.
 * **Control de Costes (FinOps):**  
   Despliega la pestaña azul **`▶ Configuración de almacenamiento adicional`** y:  
@@ -157,7 +157,9 @@ Baja hasta casi el final de la página (justo por encima de la caja de *"Costos 
 > **¡NO DEJES ESTE CAMPO EN BLANCO!**  
 > Si dejas este campo vacío, PostgreSQL arrancará únicamente con la base de datos vacía del sistema (`postgres`). Cuando el backend intente arrancar, fallará indicando: `FATAL: database "pizzeria_db" does not exist`.
 
-*(El resto de opciones de cifrado, copias de seguridad y mantenimiento se dejan tal como vienen por defecto).*
+* **Copias de seguridad:** deja **activadas** las copias automáticas y pon el **periodo de retención en 1 día**.
+
+*(El resto de opciones de cifrado y mantenimiento se dejan tal como vienen por defecto).*
 
 ---
 
@@ -220,7 +222,7 @@ Una vez que el estado de la instancia RDS pase a **Disponible** (*Available*), c
 3. Haz clic en la tercera tarjeta: 👉 **`Puntos de conexión`** *(Úselo cuando se conecte a través de cualquier interfaz IDE)*.
 4. En la tabla inferior que aparece, localiza el **Punto de enlace (*Endpoint*)** y cópialo con el icono de los dos cuadraditos. Tiene una estructura similar a esta:
    ```text
-   pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com
+   pizzeria-db.<identificador>.us-east-1.rds.amazonaws.com
    ```
 
 ---
@@ -238,15 +240,19 @@ cd ~/pizzeria-base
 Ejecuta la utilidad `pg_dump` desde el contenedor de PostgreSQL para generar el volcado:
 
 ```bash
-docker exec -e PGPASSWORD=pizzeria_pass_2026! -t pizzeria-prod-db pg_dump -U pizzeria_user -d pizzeria_db > backup.sql
+docker exec pizzeria-prod-db pg_dump -U pizzeria_user -d pizzeria_db > backup.sql
 ```
 *(Se generará en 1 segundo un archivo `backup.sql` con la estructura y los datos completos).*
 
 #### Paso B: Restaurar la copia dentro de AWS RDS
 Inyecta el archivo en tu nueva instancia de Amazon RDS sustituyendo `<ENDPOINT_RDS>` por el endpoint que copiaste:
 
+La clave maestra de RDS se teclea sin mostrarse (no queda en el historial):
+
 ```bash
-docker exec -e PGPASSWORD=pizzeria_pass_2026! -i pizzeria-prod-db psql -h <ENDPOINT_RDS> -U pizzeria_user -d pizzeria_db < backup.sql
+read -r -s -p "Clave maestra de RDS: " PGPASSWORD; echo; export PGPASSWORD
+docker exec -e PGPASSWORD -i pizzeria-prod-db psql -h <ENDPOINT_RDS> -U pizzeria_user -d pizzeria_db < backup.sql
+unset PGPASSWORD
 ```
 
 *(Verás pasar una ráfaga de confirmaciones `ALTER TABLE` y `setval`. Al terminar, ¡toda la base de datos estará clonada en AWS RDS!)*.
@@ -271,11 +277,11 @@ Localiza la variable `DB_HOST` y sustituye el valor local `db` por tu Endpoint d
 # 4. BASE DE DATOS POSTGRESQL (AWS RDS CLOUD GESTIONADA)
 # ==============================================================================
 # ANTES: DB_HOST=db
-DB_HOST=pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com
+DB_HOST=<ENDPOINT_RDS>
 DB_PORT=5432
 DB_NAME=pizzeria_db
 DB_USER=pizzeria_user
-DB_PASSWORD=pizzeria_pass_2026!
+DB_PASSWORD=<TU_CLAVE_RDS>
 ```
 
 *(Guarda los cambios con `Ctrl + O`, presiona `Enter` y sal con `Ctrl + X`).*
@@ -283,7 +289,7 @@ DB_PASSWORD=pizzeria_pass_2026!
 ---
 
 ### 2. Recompilar y arrancar el Backend con soporte SSL
-Amazon RDS exige que las conexiones vayan cifradas mediante SSL/TLS. Aplica la nueva variable y recompila el backend:
+Amazon RDS exige que las conexiones vayan cifradas mediante SSL/TLS. No hay ninguna variable que activar: el backend usa SSL automáticamente cuando `DB_HOST` no es `db` ni `localhost` (`DB_SSL=true` lo fuerza en otros casos). Recompila el backend para que lea el `.env`:
 
 ```bash
 docker compose -f docker-compose.app.yml up -d --build backend
@@ -361,37 +367,29 @@ Sin embargo, cuando DbGate tiene conexiones inyectadas por variables de entorno 
 1. **Bloquea la interfaz gráfica** e impide crear o editar conexiones desde el navegador.
 2. **Ignora el parámetro SSL** porque su lector de variables de entorno no soporta flags de cifrado.
 
-La solución limpia y definitiva es **simplificar `docker-compose.db.yml`** (dejando DbGate libre de variables estáticas) e **inyectar la conexión con `useSsl: true`** en su archivo de configuración interno:
+La solución limpia y definitiva es **no usar `CONNECTIONS`** (el `docker-compose.db.yml` del repositorio ya no las define, y DbGate sigue con `SKIP_ALL_AUTH=true` porque la protección está delante, en Nginx) e **inyectar la conexión con `useSsl: true`** en su archivo de configuración interno.
 
-#### Paso 1: Limpiar `docker-compose.db.yml` en tu EC2
-Ejecuta este comando directo en la terminal para retirar las variables que forzaban la conexión al contenedor local:
+#### Paso 1: Arrancar DbGate con el compose actual
 ```bash
-sed -i '/- CONNECTIONS=pizzeria/,/- ENGINE_pizzeria=/d' docker-compose.db.yml
-```
-*(O si prefieres editarlo con `nano ~/pizzeria-base/docker-compose.db.yml`, deja la sección `dbgate` limpia únicamente con `WEB_ROOT=/dbgate` y `SKIP_ALL_AUTH=true`).*
-
-#### Paso 2: Recrear el contenedor de DbGate
-```bash
-docker compose -f docker-compose.db.yml up -d --force-recreate dbgate
+docker compose -f docker-compose.db.yml up -d dbgate
 ```
 
-#### Paso 3: Inyectar la conexión con SSL a AWS RDS y reiniciar DbGate
-Ejecuta este comando directo de una sola línea en la terminal de tu EC2 (sustituyendo `<ENDPOINT_RDS>` por tu endpoint real):
+#### Paso 2: Inyectar la conexión con SSL a AWS RDS y reiniciar DbGate
+El script lee `DB_HOST`, `DB_USER`, `DB_PASSWORD`… del `.env` que acabas de editar, así que no tienes que escribir la clave en la terminal:
 
 ```bash
-echo '{"_id":"pizzeria_rds","engine":"postgres@dbgate-plugin-postgres","server":"<ENDPOINT_RDS>","port":5432,"user":"pizzeria_user","password":"pizzeria_pass_2026!","defaultDatabase":"pizzeria_db","displayName":"AWS RDS Bella Napoli","useSsl":true}' | docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' && docker compose -f docker-compose.db.yml restart dbgate
+bash scripts/dbgate_conexion_rds.sh
 ```
 
 > [!IMPORTANT]
-> * Sustituye `<ENDPOINT_RDS>` por tu **Punto de enlace real** copiado de RDS (ejemplo: `pizzeria-db.xxxx.us-east-1.rds.amazonaws.com`).
-> * **Sin barra final:** El endpoint termina siempre en `.com`, **NUNCA añadas un slash `/` al final**.
+> El endpoint termina siempre en `.com`; si le sobra una barra final, el script la quita.
 
-Comprueba en la terminal que se ha guardado correctamente:
+Comprueba en la terminal que se ha guardado correctamente (muestra la clave en pantalla; no compartas la captura):
 ```bash
 docker exec pizzeria-prod-dbgate cat /root/.dbgate/connections.jsonl
 ```
 
-#### Paso 4: Verificación
+#### Paso 3: Verificación
 1. Abre o refresca en tu navegador: **`https://daw-XX.guillermofoix.org/dbgate/`**.
 2. En el panel izquierdo de **Conexiones**, haz doble clic sobre: 👉 **`AWS RDS Bella Napoli`**.
 3. Se conectará mediante SSL a Amazon RDS y desplegará la carpeta **Tablas**: verás `pedidos`, `pizzas`, `ingredientes`, `mesas` y podrás realizar consultas SQL directamente en la nube de AWS. Además, el botón `+` para crear nuevas conexiones vuelve a estar 100% operativo.
@@ -427,7 +425,7 @@ Sigue este protocolo estricto de apagado ordenado cada vez que finalice tu sesi�
 
 ### 2. Detener la máquina virtual EC2
 1. En la consola de **AWS EC2** $\rightarrow$ **Instancias**.
-2. Selecciona tu instancia `Pizzeria-Alumno`.
+2. Selecciona tu instancia `Pizzeria-TuNombre`.
 3. Haz clic en **Estado de la instancia** $\rightarrow$ **Detener instancia** (*Stop instance*).
 
 ### 3. Recordatorio de Vocareum
@@ -442,6 +440,6 @@ Sigue este protocolo estricto de apagado ordenado cada vez que finalice tu sesi�
 | **Ubicación de Datos** | Disco local de la EC2 | Volumen local de la EC2 | **Almacenamiento persistente dedicado en AWS** |
 | **Aislamiento de Red** | Red interna Docker | Red interna Docker | **VPC Privada sin IP pública (Acceso 0 Internet)** |
 | **Impacto si cae la EC2** | Caída total y riesgo de corrupción | Caída total | **Datos 100% a salvo en el cluster de AWS** |
-| **Backups** | Manual con scripts | Manual con scripts | **Automáticos continuos con Point-in-Time Recovery** |
+| **Backups** | Manual con scripts | Manual con scripts | **Automáticos (retención de 1 día) con Point-in-Time Recovery** |
 | **Cifrado en Reposo** | No cifrado | No cifrado | **Cifrado AES-256 nativo con AWS KMS** |
 | **Cambios en Código** | N/A | Cero cambios | **Cero cambios (Solo variable `DB_HOST`)** |

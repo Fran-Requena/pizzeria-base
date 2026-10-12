@@ -29,12 +29,18 @@ services:
       DB_HOST: ${DB_HOST:-db}
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER:-pizzeria_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pizzeria_pass_2026!}
+      DB_PASSWORD: "${DB_PASSWORD:?Define DB_PASSWORD en el archivo .env (elige tu propia clave, ver la guia de despliegue)}"
       DB_NAME: ${DB_NAME:-pizzeria_db}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      # Cifrado SSL con la base de datos (con RDS se activa solo; "true" lo fuerza)
+      DB_SSL: ${DB_SSL:-}
+      # Pagos con Stripe (opcional: vacías = sin pasarela). Ver el apéndice de la guía de despliegue.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       FRONTEND_URL: ${FRONTEND_URL:-}
+      # Reconciliación de pagos (vacías = valores por defecto: cada 2 min y espera de 30 s)
+      RECONCILIACION_MINUTOS: ${RECONCILIACION_MINUTOS:-}
+      RECONCILIACION_ESPERA_SEGUNDOS: ${RECONCILIACION_ESPERA_SEGUNDOS:-}
     networks:
       - pizzeria-network
 
@@ -47,6 +53,10 @@ services:
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-80}:80"
+    volumes:
+      # Claves de /dbgate/ (HTTP Basic Auth). Crea .htpasswd ANTES del 'up': si no existe,
+      # Docker crea un directorio con ese nombre y Nginx no puede leerlo.
+      - ./.htpasswd:/etc/nginx/.htpasswd:ro
     depends_on:
       - backend
     networks:

@@ -3,7 +3,13 @@
 **Módulo:** Despliegue de Aplicaciones Web (2º DAW) / Proyecto Intermodular (2º DAW & DAM)  
 **Ciclo Formativo:** Desarrollo de Aplicaciones Web / Multiplataforma  
 **Proyecto:** Pizzería Bella Napoli  
-**Tiempo estimado de despliegue:** 20 minutos  
+**Tiempo estimado de despliegue:** unos 40 minutos (la mitad, esperando a que AWS cree la base de datos) [POR VERIFICAR EN LAB LIMPIO]  
+
+> **Antes de empezar:** lee la [Ficha de continuidad](FICHA_CONTINUIDAD.md). Ahí está el
+> presupuesto del laboratorio (50 $) y cómo parar y arrancar todo sin gastar saldo ni perder trabajo.
+
+> **Qué necesitas que te dé el profesor (en Aules):** tu **subdominio** y tu **token de túnel**, y
+> la **clave de administración** de `/dbgate/`. Las demás claves las eliges tú.
 
 ---
 
@@ -11,8 +17,8 @@
 
 Esta guía está diseñada como un **camino directo ("Fast-Track")** para desplegar de una sola vez la arquitectura final en producción de la Pizzería Bella Napoli.
 
-A diferencia del itinerario formativo progresivo ([Prácticas P01 a P06](P01_Despliegue_AWS.md)), pensado para que los alumnos descubran los problemas paso a paso mediante el contraste y la resolución iterativa de errores, este documento está dirigido a:
-* **Docentes y compañeros de departamento:** Para desplegar el entorno de producción completo y validado en 20 minutos sin necesidad de recorrer las 6 prácticas secuenciales.
+A diferencia del itinerario formativo progresivo ([Prácticas P01 a P08](P01_Despliegue_AWS.md)), pensado para que los alumnos descubran los problemas paso a paso mediante el contraste y la resolución iterativa de errores, este documento está dirigido a:
+* **Docentes y compañeros de departamento:** Para desplegar el entorno de producción completo y validado sin necesidad de recorrer las prácticas secuenciales.
 * **Alumnos de Proyecto Intermodular / Fin de Ciclo:** Para tomar como plantilla y memoria técnica de referencia un despliegue Cloud-Native profesional de 3 capas.
 * **Metodología Didáctica "Top-Down" (Ingeniería Inversa):** Para arrancar el curso con el sistema completo ya funcionando en la nube y, a partir de ahí, diseccionar y estudiar cada componente en profundidad.
 
@@ -25,7 +31,7 @@ El despliegue implementa el estándar de la industria **Well-Architected Framewo
 ```mermaid
 graph TB
     subgraph CLIENTS ["1. Clientes y Perímetro Exterior"]
-        Browser["Navegador Web / Móvil Clientes<br/>(https://daw-XX.guillermofoix.org)"]
+        Browser["Navegador Web / Móvil Clientes<br/>(https://TU-SUBDOMINIO)"]
         CF_Edge["Red Perimetral Anycast de Cloudflare<br/>(WAF, DDoS Shield, SSL Automático)"]
     end
 
@@ -42,7 +48,7 @@ graph TB
 
         subgraph RDS_CLUSTER ["3. Capa de Persistencia Gestionada: AWS RDS"]
             RDS["Amazon RDS PostgreSQL 16.15<br/>(pizzeria-db - db.t4g.micro)<br/>Publicly Accessible: NO<br/>Cifrado TLS/SSL Obligatorio"]
-            Storage[("Almacenamiento gp3 20 GiB<br/>Backups Automatizados")]
+            Storage[("Almacenamiento gp3 20 GiB<br/>Copias automáticas (retención 1 día)")]
         end
     end
 
@@ -109,10 +115,11 @@ graph TB
    * **Identificador de instancia de base de datos:** `pizzeria-db`
    * **Usuario maestro:** `pizzeria_user`
    * **Gestión de credenciales:** Autogestionada (*Self managed*).
-   * **Contraseña maestra:** `pizzeria_pass_2026!`
+   * **Contraseña maestra:** `<TU_CLAVE_RDS>`: elige una clave propia de al menos 12 caracteres y **apúntala**, la necesitarás en el `.env`.  
+     AWS no admite `/`, `"`, `@` ni espacios. Para evitar problemas con Docker, **no uses tampoco `$`, `#` ni comillas**.
    * **Configuración de la instancia:** `db.t4g.micro` (o `db.t3.micro`).
    * **Almacenamiento:**
-     * **Tipo de almacenamiento:** SSD de uso general (`gp2` o `gp3`).
+     * **Tipo de almacenamiento:** SSD de uso general (`gp3`).
      * **Almacenamiento asignado:** `20` GiB.
      * **Desplegable `▼ Configuración de almacenamiento adicional`:**  
        Haz clic sobre él para expandirlo y **DESMARCA** la casilla **«Habilitar escalado automático de almacenamiento»** (*Enable storage autoscaling*).  
@@ -124,7 +131,7 @@ graph TB
      * **Grupo de seguridad de VPC:** Selecciona **`pizzeria-rds-secgroup`** (si aparece el grupo `default`, quítalo para que solo quede este).
    * **Configuración adicional (Despliega la sección `▼ Configuración adicional` al final de la página):**
      * **Nombre de la base de datos inicial:** `pizzeria_db` (¡Crítico! Si se deja vacío, PostgreSQL no creará la BBDD inicial y la aplicación fallará).
-     * **Copias de seguridad:** Desmarca *Habilitar copias de seguridad automáticas* (ahorro de créditos de laboratorio).
+     * **Copias de seguridad:** deja **marcada** la opción *Habilitar copias de seguridad automáticas* y pon el **Periodo de retención de copia de seguridad** en **1 día**. [POR VERIFICAR EN LAB LIMPIO] (la consola puede ofrecer solo 1 día).
 4. Pulsa el botón final naranja **Crear base de datos**.
 5. **Localizar y copiar el Punto de enlace (*Endpoint*):**
    * Espera 4-5 minutos hasta que el estado de la base de datos cambie de *Creando* a **Disponible** (*Available*).
@@ -132,7 +139,8 @@ graph TB
    * En la pestaña **Conectividad y seguridad** (*Connectivity & security*), observa el apartado superior *"Conectarse mediante"*.
    * Si por defecto viene marcada la tarjeta *Fragmentos de código*, haz clic en la tercera tarjeta: 👉 **`Puntos de conexión`** (*"Úselo cuando se conecte a través de cualquier interfaz IDE"*).
    * Justo debajo, en la sección **Punto de enlace y puerto**, localiza el campo **Punto de enlace** (*Endpoint*) y haz clic en el icono de copiar. Tendrá un formato similar a:  
-     `pizzeria-db.crfj6um8vnsv.us-east-1.rds.amazonaws.com`
+     `pizzeria-db.<identificador>.us-east-1.rds.amazonaws.com`  
+     En el resto de la guía lo llamamos **`<ENDPOINT_RDS>`** (termina en `.com`, sin barra final).
    * Guarda este valor; lo utilizaremos a continuación en el archivo `.env` de la EC2 (`DB_HOST`) y en la configuración de DbGate.
 
 ---
@@ -141,7 +149,8 @@ graph TB
 
 Para conectar tu máquina a Internet sin exponer IPs públicas ni abrir puertos en AWS, utilizaremos un **Cloudflare Tunnel**:
 
-1. Obtén tu **Token de Túnel** asignado por el profesor (o créalo en el panel de Cloudflare Zero Trust $\rightarrow$ *Networks* $\rightarrow$ *Tunnels* asociándolo a tu subdominio, ej: `daw-XX.guillermofoix.org` apuntando a `HTTP://localhost:80`).
+1. Obtén tu **Token de Túnel** asignado por el profesor en Aules. Si lo crearas tú en el panel de Cloudflare Zero Trust $\rightarrow$ *Networks* $\rightarrow$ *Tunnels*, asocia tu subdominio (ej: `daw-XX.tudominio.org`) al servicio **`http://frontend-web:80`**.
+   > **Importante:** el túnel corre **dentro de un contenedor** (`pizzeria-prod-tunnel`), así que `localhost` sería ese mismo contenedor y no llegaría a Nginx. Hay que usar el nombre del servicio de Nginx en la red de Docker: `frontend-web`. [POR VERIFICAR EN LAB LIMPIO]
 2. Guarda el valor del token para el siguiente paso.
 
 ---
@@ -174,19 +183,23 @@ Para conectar tu máquina a Internet sin exponer IPs públicas ni abrir puertos 
    nano .env
    ```
 
-3. Modifica los siguientes parámetros:
+3. Modifica los siguientes parámetros (el resto déjalos como están):
    * **`CLOUDFLARE_TUNNEL_TOKEN=`** $\rightarrow$ Pega tu token de Cloudflare.
-   * **`DB_HOST=db`** $\rightarrow$ Sustituye `db` por el **Punto de enlace (*Endpoint*) de AWS RDS** que copiaste en el paso 1.4:
+   * **`DB_HOST=db`** $\rightarrow$ Sustituye `db` por el **Punto de enlace (*Endpoint*) de AWS RDS** que copiaste en el paso 1.4.
+   * **`DB_PASSWORD=`** $\rightarrow$ Escribe la **misma clave** que pusiste como contraseña maestra de RDS.
      ```ini
-     DB_HOST=pizzeria-db.cujmuqw6zgcb.us-east-1.rds.amazonaws.com
+     DB_HOST=<ENDPOINT_RDS>
      DB_PORT=5432
      DB_NAME=pizzeria_db
      DB_USER=pizzeria_user
-     DB_PASSWORD=pizzeria_pass_2026!
+     DB_PASSWORD=<TU_CLAVE_RDS>
      ```
+     > Sustituye los textos entre `<` y `>` por tus valores, **sin** los signos `<` `>`, sin comillas y sin espacios.
      > [!TIP]
      > **Recordatorio:** Este valor proviene de la consola de RDS $\rightarrow$ *pizzeria-db* $\rightarrow$ pestaña *Conectividad y seguridad* $\rightarrow$ tarjeta **`Puntos de conexión`** $\rightarrow$ campo **Punto de enlace**.
-   *(Guarda en nano con `Ctrl + O`, `Enter` y sal con `Ctrl + X`).*
+     > [!IMPORTANT]
+     > Si dejas `DB_PASSWORD` vacía, Docker se negará a arrancar con el mensaje *«Define DB_PASSWORD en el archivo .env»*. Es lo esperado: no hay clave por defecto.
+   *(Guarda en nano con `Ctrl + O`, `Enter` y sal con `Ctrl + X`). Edita el `.env` siempre con `nano`: así tus claves no quedan escritas en el historial de la terminal.*
 
 ---
 
@@ -201,58 +214,79 @@ docker network create pizzeria-network
 ### 3.4 Inyectar la Configuración de DbGate con Cifrado SSL
 Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor local `db`. Para arrancar DbGate y conectarlo de inmediato a AWS RDS:
 
-1. Crea el volumen persistente y arranca el contenedor de DbGate:
+1. Arranca el contenedor de DbGate (solo `dbgate`; el `db` local de ese archivo no se usa con RDS):
    ```bash
-   docker volume create pizzeria_prod_dbgate
    docker compose -f docker-compose.db.yml up -d dbgate
    ```
 
-2. Inyecta la conexión a RDS con `"useSsl": true` y reinicia DbGate:
-   Ejecuta este comando directo de una sola línea (sustituyendo `<ENDPOINT_RDS>` por tu endpoint real):
+2. Genera la conexión a RDS (con `"useSsl": true`) y reinicia DbGate. El script lee `DB_HOST`, `DB_USER`, `DB_PASSWORD`… de tu `.env`, así que **no tienes que escribir la clave** ni queda en el historial:
    ```bash
-   echo '{"_id":"pizzeria_rds","engine":"postgres@dbgate-plugin-postgres","server":"<ENDPOINT_RDS>","port":5432,"user":"pizzeria_user","password":"pizzeria_pass_2026!","defaultDatabase":"pizzeria_db","displayName":"AWS RDS Bella Napoli","useSsl":true}' | docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' && docker compose -f docker-compose.db.yml restart dbgate
+   bash scripts/dbgate_conexion_rds.sh
    ```
    > [!IMPORTANT]
-   > * Sustituye `<ENDPOINT_RDS>` por tu **Punto de enlace (*Endpoint*) real** copiado en el paso 1.4 (ejemplo: `pizzeria-db.xxxx.us-east-1.rds.amazonaws.com`).
-   > * **Sin barra final:** El endpoint debe terminar estrictamente en `.com`, **NUNCA añadas un slash `/` al final**.
+   > Si el script dice que `DB_HOST` debe ser el endpoint de RDS, vuelve al paso 3.2 y revisa el `.env`.
+   > El endpoint debe terminar en `.com`; si le sobra una barra final, el script la quita.
 
-3. Comprueba que el archivo se ha guardado correctamente:
+3. Comprueba que el archivo se ha guardado correctamente (esta orden **muestra la clave en pantalla**; úsala solo si estás a solas y no compartas la captura):
    ```bash
    docker exec pizzeria-prod-dbgate cat /root/.dbgate/connections.jsonl
    ```
    *(Deberás ver una sola línea con tu endpoint limpio y `"useSsl":true`).*
 
+> **Por qué no hay `CONNECTIONS` ni `SKIP_ALL_AUTH=false` en el compose de DbGate:** DbGate funciona sin login propio
+> (`SKIP_ALL_AUTH=true`) porque la protección está delante, en Nginx (paso 3.5). Y la conexión a RDS se inyecta en
+> `connections.jsonl` porque las conexiones definidas por variables de entorno no admiten SSL.
+
 ---
 
 ### 3.5 Proteger el acceso a `/dbgate/` con HTTP Basic Auth (Obligatorio por Seguridad)
 
-Como DbGate otorga acceso administrativo directo a todas las tablas de PostgreSQL (incluyendo clientes, comandas y pedidos), en un entorno de producción accesible a través de Internet **es una vulnerabilidad crítica dejarlo abierto sin autenticación**:
+Como DbGate otorga acceso administrativo directo a todas las tablas de PostgreSQL (incluyendo clientes, comandas y pedidos), en un entorno de producción accesible a través de Internet **es una vulnerabilidad crítica dejarlo abierto sin autenticación**.
 
-1. Genera el archivo `.htpasswd` con las credenciales de administración (`admin` / `PizzeriaAdmin_2026!`):
+La protección **ya viene en el repositorio**: `frontend-web/nginx.conf` exige usuario y contraseña en `/dbgate/` y
+`docker-compose.app.yml` monta el archivo `.htpasswd` dentro de Nginx. **No edites ninguno de esos dos archivos.** Solo te falta crear el `.htpasswd`, y **antes** del `up` del paso 3.6:
+
+1. Ten a mano la **clave de administración** que te ha dado el profesor en Aules (`<CLAVE_ADMIN>`). Ejecuta estas líneas
+   (la clave se escribe sin mostrarse y no queda en el historial; funciona con caracteres como `!`):
    ```bash
-   echo "admin:$(openssl passwd -apr1 'PizzeriaAdmin_2026!')" > .htpasswd
+   read -r -s -p "Clave de administración de DbGate: " CLAVE_ADMIN; echo
+   printf 'admin:%s\n' "$(printf '%s' "$CLAVE_ADMIN" | openssl passwd -apr1 -stdin)" > .htpasswd
+   unset CLAVE_ADMIN
    chmod 644 .htpasswd
    ```
+   El usuario es siempre `admin`. Los permisos `644` son necesarios: Nginx (usuario `nginx` dentro del contenedor) tiene que poder leer el archivo.
 
-2. Activa la directiva de autenticación en `frontend-web/nginx.conf`:
+2. Comprueba que es un **archivo** (empieza por `-`) y que contiene una línea que empieza por `admin:$apr1$`:
    ```bash
-   sed -i '/location .*\/dbgate\/ {/a \        auth_basic "Acceso Restringido - Administracion";\n        auth_basic_user_file /etc/nginx/.htpasswd;' frontend-web/nginx.conf
+   ls -l .htpasswd
+   cut -c1-14 .htpasswd
    ```
 
-3. Monta el archivo `.htpasswd` dentro del contenedor web en `docker-compose.app.yml`:
-   ```bash
-   sed -i '/container_name: pizzeria-prod-web/a \    volumes:\n      - ./.htpasswd:/etc/nginx/.htpasswd:ro' docker-compose.app.yml
-   ```
+> [!WARNING]
+> **El orden importa.** Si arrancas el stack sin que exista `.htpasswd`, Docker crea una **carpeta** con ese nombre y Nginx
+> no podrá leer las claves (`/dbgate/` dará error 500). Si te pasa: `docker compose -f docker-compose.app.yml down`,
+> `rm -r .htpasswd`, vuelve a crearlo con los comandos de arriba y repite el paso 3.6.
+
+> El archivo `.htpasswd` está en el `.gitignore`: no se sube a Git. Si cambias la clave de administración, repite el paso 1 y reinicia Nginx:
+> `docker compose -f docker-compose.app.yml restart frontend-web`.
 
 
 ---
 
 ### 3.6 Compilar y Arrancar el Stack de Aplicación
+Antes de lanzar nada, comprueba que ya existe el archivo `.htpasswd` (paso 3.5) y que la red del paso 3.3 está creada:
+
+```bash
+ls -l .htpasswd && docker network ls | grep pizzeria-network
+```
+
 Lanza la aplicación completa (Backend Node.js, Frontend Web, WebApp QR y Túnel Cloudflare):
 
 ```bash
 docker compose -f docker-compose.app.yml up -d --build
 ```
+
+Si aparece *«Define DB_PASSWORD en el archivo .env»*, falta la clave en el `.env` (paso 3.2). La primera compilación tarda un par de minutos.
 
 > 💡 **Aprovisionamiento Automático de Datos:**  
 > Al arrancar, el backend de Node.js se conecta a Amazon RDS mediante SSL, detecta que la base de datos está recién creada y ejecuta automáticamente la creación de tablas (`pizzas`, `ingredientes`, `mesas`, `pedidos`...) y la siembra de datos inicial. ¡No necesitas ejecutar scripts SQL manuales!
@@ -264,7 +298,7 @@ docker compose -f docker-compose.app.yml up -d --build
 Comprueba que la infraestructura está 100% operativa:
 
 1. **Auditoría Automatizada de Salud y Diagnóstico (Recomendado):**
-   Ejecuta el script de auditoría integral que valida de forma automatizada los 6 puntos críticos de la arquitectura (variables `.env`, resolución DNS, reglas de entrada de Security Groups, contenedores Docker en vivo, cifrado SSL en DbGate y test de la API):
+   Ejecuta el script de auditoría integral que valida de forma automatizada la arquitectura (variables `.env`, resolución DNS, reglas de entrada de Security Groups, contenedores Docker en vivo, cifrado SSL en DbGate, test de la API, túnel y, si lo activas, Stripe):
    ```bash
    bash scripts/audit_db_connection.sh
    ```
@@ -277,26 +311,31 @@ Comprueba que la infraestructura está 100% operativa:
    *(Deberás ver activos: `pizzeria-prod-backend`, `pizzeria-prod-web`, `pizzeria-prod-qr`, `pizzeria-prod-tunnel` y `pizzeria-prod-dbgate`).*
 
 3. **Diagnóstico de Salud de la API con conexión a RDS:**
+   Desde la propia EC2 (Nginx publica el puerto 80 de la máquina según `HTTP_PORT=80` del `.env`; no hace falta abrirlo en el Security Group porque la llamada es local):
    ```bash
    curl -s http://localhost/api/health
    ```
-   **Salida esperada:**
+   Si cambiaste `HTTP_PORT`, o no responde, pregúntaselo directamente al contenedor del backend:
+   ```bash
+   docker exec pizzeria-prod-backend wget -qO- http://localhost:3000/api/health
+   ```
+   **Salida esperada** (`connected:true` y `db_time` indican que responde RDS):
    ```json
-   {"status":"UP","service":"pizzeria-backend","database":{"connected":true,"db_time":"2026-09-23T..."}}
+   {"status":"UP","service":"pizzeria-backend","timestamp":"...","database":{"connected":true,"db_time":"..."}}
    ```
 
-3. **Verificación en el Navegador:**
-   * 👉 **Web Comercial & Cocina KDS:** `https://daw-XX.guillermofoix.org/` $\rightarrow$ Catálogo de pizzas cargado desde AWS RDS y panel KDS para gestionar comandas en tiempo real.
-   * 👉 **WebApp QR Mesas:** `https://daw-XX.guillermofoix.org/pedido` (o `/app/`) $\rightarrow$ Interfaz móvil para comensales.
+4. **Verificación en el Navegador** (sustituye `<TU_SUBDOMINIO>` por el que te dio el profesor, por ejemplo `daw-01.tudominio.org`):
+   * 👉 **Web Comercial & Cocina KDS:** `https://<TU_SUBDOMINIO>/` $\rightarrow$ Catálogo de pizzas cargado desde AWS RDS y panel KDS para gestionar comandas en tiempo real.
+   * 👉 **WebApp QR Mesas:** `https://<TU_SUBDOMINIO>/app/` $\rightarrow$ Interfaz móvil para comensales.
    * 👉 **Gestor Visual DbGate (`/dbgate/`):**
-     1. Entra a `https://daw-XX.guillermofoix.org/dbgate/`.
-     2. Introduce las credenciales de administración: Usuario `admin` | Contraseña `PizzeriaAdmin_2026!`.
+     1. Entra a `https://<TU_SUBDOMINIO>/dbgate/`. El navegador te pedirá usuario y contraseña (es la protección de Nginx).
+     2. Introduce las credenciales de administración: Usuario `admin` | Contraseña `<CLAVE_ADMIN>` (la que te dio el profesor y usaste en el paso 3.5).
      3. En el panel izquierdo de **Conexiones**, haz doble clic sobre: 👉 **`AWS RDS Bella Napoli`**.
      4. Se conectará mediante SSL a Amazon RDS y desplegará la carpeta **Tablas**: verás `pizzas`, `ingredientes`, `mesas`, `pedidos` y `lineas_pedido`.
      5. Haz doble clic sobre cualquier tabla (ej. `pizzas` o `pedidos`) para ver y editar registros en vivo, o pulsa en **Nueva consulta** (*New Query*) para lanzar sentencias SQL directas contra PostgreSQL.
 
-4. **Prueba Transaccional:**
-   Haz un pedido desde el TPV o desde la app móvil. Refresca la tabla `pedidos` en DbGate: el registro aparece guardado en tiempo real en la infraestructura gestionada de Amazon Web Services.
+5. **Prueba Transaccional:**
+   Haz un pedido desde la web (pago en efectivo) o desde la app móvil. Refresca la tabla `pedidos` en DbGate: el registro aparece guardado en tiempo real en la infraestructura gestionada de Amazon Web Services.
 
 ---
 
@@ -321,7 +360,7 @@ Esta sección proporciona la justificación de ingeniería requerida en las **me
 | :--- | :--- | :--- |
 | **Punto Único de Fallo (SPOF)** | Si la máquina virtual EC2 se apaga o se corrompe el disco EBS, la base de datos se destruye. | La base de datos vive en un clúster desacoplado e independiente de la máquina EC2. |
 | **Alta Disponibilidad** | Manual y compleja de implementar. | Activación con un clic de **Multi-AZ** (réplica síncrona en otro centro de datos físico con failover < 60s). |
-| **Copias de Seguridad (Backups)** | Requiere programar tareas cron con `pg_dump` y scripts bash. | Automatizadas diariamente por AWS con restauración a cualquier segundo (*Point-in-Time Recovery*). |
+| **Copias de Seguridad (Backups)** | Requiere programar tareas cron con `pg_dump` y scripts bash. | Automatizadas por AWS (aquí con retención de 1 día) y restauración a cualquier instante de ese periodo (*Point-in-Time Recovery*). |
 | **Seguridad de Red** | Comparte el mismo host y red que el servidor web. | Aislada en subredes privadas con cortafuegos por Security Group y forzado obligatorio de SSL/TLS. |
 | **Rendimiento** | Compite por la memoria RAM y CPU de la EC2 con Nginx y Node.js. | Memoria RAM, CPU y disco NVMe dedicados exclusivamente al motor de base de datos. |
 
@@ -362,20 +401,104 @@ Arquitectura Tradicional (ALB)      VS     Arquitectura Zero Trust (Cloudflare)
 | **Perímetro:** Cloudflare Zero Trust Tunnel | **0.00 $ (Gratuito)** | **0.00 $ (Gratuito)** |
 | **Balanceador AWS ALB (Evitado):** | **0.00 $ (Ahorrado)** | **~20.00 $/mes (Ahorrado)** |
 | **TOTAL ESTIMADO:** | **0.00 $ (Cubierto por Lab / Free Tier)** | **~32.40 $/mes** |
+| **Presupuesto del laboratorio:** | **50 $ por alumno** (ver [Ficha de continuidad](FICHA_CONTINUIDAD.md)) | — |
+| **Consumo aproximado con todo encendido 24/7:** | **≈ 1 $ al día** (≈ 7 $ por semana); parado, ≈ 0,3 $ al día. [POR VERIFICAR EN LAB LIMPIO] | — |
 
 ---
 
 ## FASE 6: Protocolo FinOps de Apagado y Ahorro de Créditos
 
-Cuando termines la demostración o sesión de clase:
+El presupuesto del laboratorio (50 $) y las rutinas completas de parada y arranque están en la
+[Ficha de continuidad](FICHA_CONTINUIDAD.md). Resumen para cuando termines la sesión:
 
-1. **Detener los contenedores en la EC2:**
-   ```bash
-   docker compose -f docker-compose.app.yml stop
-   docker compose -f docker-compose.db.yml stop
+1. **Detener la instancia RDS** en la consola de AWS: **RDS** $\rightarrow$ **Bases de datos** $\rightarrow$ `pizzeria-db` $\rightarrow$ **Acciones** $\rightarrow$ **Detener temporalmente** (*Stop temporarily*).
+   > ⚠️ **AWS vuelve a encender sola una RDS parada a los 7 días.** Si no vas a volver en una semana, anótalo y vuelve a detenerla; si no, seguirá gastando saldo.
+2. **Detener la instancia EC2** en la consola de AWS: **EC2** $\rightarrow$ **Instancias** $\rightarrow$ tu máquina $\rightarrow$ **Estado de la instancia** $\rightarrow$ **Detener instancia** (*Stop instance*).
+3. **No pulses nunca «End Lab»**: borraría la EC2, los discos y la base de datos.
+
+**No hace falta parar los contenedores a mano.** Todos los servicios tienen `restart: unless-stopped`: al arrancar de nuevo la EC2,
+Docker los levanta solo (Nginx reintenta hasta que `dbgate` y `backend` están listos). Solo se quedan apagados los que tú pares
+expresamente con `docker compose ... stop` o `docker stop`; si lo hiciste, vuelve a levantarlos con:
+```bash
+cd ~/pizzeria-base
+docker compose -f docker-compose.db.yml up -d dbgate
+docker compose -f docker-compose.app.yml up -d
+```
+
+**Al empezar la siguiente sesión:** *Start Lab*, arranca **primero RDS** (espera a que esté *Disponible*), después la EC2, y a los 1-2 minutos comprueba con `docker ps` que están los cinco contenedores. [POR VERIFICAR EN LAB LIMPIO]
+
+---
+
+## FASE 7: Actualizar a una versión nueva del proyecto
+
+Las actualizaciones **no se traen con `git pull`** (chocaría con cualquier archivo que hayas tocado). Se vuelve a clonar el proyecto
+y se copian tus claves:
+
+```bash
+cd ~
+mv pizzeria-base pizzeria-base.anterior
+git clone https://github.com/guillermofoix/pizzeria-base.git
+cp pizzeria-base.anterior/.env pizzeria-base/.env
+cp pizzeria-base.anterior/.htpasswd pizzeria-base/.htpasswd
+cd pizzeria-base
+docker compose -f docker-compose.db.yml up -d dbgate
+docker compose -f docker-compose.app.yml up -d --build
+```
+
+* Los datos no se pierden: están en RDS. Los contenedores se recrean con los mismos nombres y la misma red.
+* Si la versión nueva añade variables al `.env`, compara con la plantilla (`diff pizzeria-base/.env pizzeria-base/.env.example`) y añade las que falten.
+* Cuando compruebes que todo funciona, puedes borrar la carpeta antigua: `rm -rf ~/pizzeria-base.anterior`.
+
+---
+
+## APÉNDICE A (opcional): Activar pagos con Stripe (modo test)
+
+Sin este apéndice la pizzería funciona igual con pagos en **efectivo y datáfono**. Con él, el cliente puede pagar con tarjeta de **prueba**.
+Todo se hace en **modo de prueba** de Stripe: no se mueve dinero real. **No pulses nunca «Activar pagos»** en el panel de Stripe.
+
+1. Crea una cuenta gratuita en [dashboard.stripe.com/register](https://dashboard.stripe.com/register), confirma el correo y comprueba que arriba a la derecha está activado **Modo de prueba** (*Test mode*).
+2. **Clave secreta de prueba:** *Desarrolladores* $\rightarrow$ *Claves de API* $\rightarrow$ *Clave secreta* $\rightarrow$ **Revelar clave de prueba**. Empieza por `sk_test_`.
+3. **Webhook:** *Desarrolladores* $\rightarrow$ *Webhooks* $\rightarrow$ **Añadir destino**:
+   * Evento: `checkout.session.completed`.
+   * Tipo de destino: **Punto de conexión de webhook**.
+   * URL: `https://<TU_SUBDOMINIO>/api/pagos/webhook` (sin barra al final).
+   * Al crearlo, copia el **Secreto de firma** (*Signing secret*). Empieza por `whsec_`.
+4. En la EC2 edita el `.env` (con `nano`, para que las claves no queden en el historial) y rellena estas tres variables, sin comillas ni espacios:
+   ```ini
+   STRIPE_SECRET_KEY=sk_test_<TU_CLAVE_DE_PRUEBA>
+   STRIPE_WEBHOOK_SECRET=whsec_<TU_SECRETO_DE_FIRMA>
+   FRONTEND_URL=https://<TU_SUBDOMINIO>
    ```
-2. **Detener la instancia EC2 en la consola de AWS:**
-   * Ve a **EC2** $\rightarrow$ **Instancias** $\rightarrow$ Selecciona tu máquina $\rightarrow$ **Estado de la instancia** $\rightarrow$ **Detener instancia** (*Stop instance*).
-3. **Detener la instancia RDS en la consola de AWS:**
-   * Ve a **RDS** $\rightarrow$ **Bases de datos** $\rightarrow$ Selecciona `pizzeria-db` $\rightarrow$ **Acciones** $\rightarrow$ **Detener temporalmente** (*Stop temporarily*).  
-   *(AWS detendrá el cómputo de la base de datos por hasta 7 días sin consumir créditos horários).*
+   `FRONTEND_URL` es la dirección a la que Stripe devuelve al cliente tras pagar. Con el secreto del webhook definido, el servidor **rechaza** (error 400) los avisos sin firma válida.
+5. Recrea el backend para que lea las variables (un `restart` no las relee):
+   ```bash
+   docker compose -f docker-compose.app.yml up -d backend
+   ```
+6. Comprueba que la pasarela está activa:
+   ```bash
+   docker logs pizzeria-prod-backend --tail 20
+   docker exec pizzeria-prod-backend wget -qO- http://localhost:3000/api/pagos/config
+   ```
+   Debes ver `Pasarela de pagos inicializada en modo activo` en el registro y, en el segundo comando, `"stripe_configured":true` y `"webhook_configured":true`.
+7. **Prueba:** haz un pedido eligiendo pago con tarjeta y paga con la tarjeta de prueba `4242 4242 4242 4242`, cualquier fecha futura, CVC `123`. Tras pagar, el pedido debe aparecer como pagado.
+
+**Cosas que conviene saber** (no hace falta tocar nada para que funcionen):
+* **Reconciliación automática:** si el aviso del webhook se pierde, el servidor revisa cada **2 minutos** los pedidos con tarjeta pendientes de las últimas 24 horas y marca como pagados los que Stripe ya cobró. Se ajusta con `RECONCILIACION_MINUTOS` en el `.env` (`0` la desactiva).
+* **Importe mínimo:** Stripe no admite cobros de menos de **0,50 €**; en ese caso el pedido se cobra en efectivo o con datáfono.
+* **Un pedido, una sola sesión de pago viva:** si el cliente vuelve a pulsar «Pagar», se cierra la sesión anterior y se crea otra.
+* **Pedidos cancelados o ya pagados** no se pueden volver a cobrar.
+* **La app Android** abre el pago en el navegador del móvil; al terminar, vuelve a la app a mano y esta consulta el estado del pedido.
+* Si algo falla, `bash scripts/audit_db_connection.sh` incluye una comprobación de Stripe (paso 7).
+
+---
+
+## APÉNDICE B: Errores frecuentes
+
+| Síntoma | Causa probable | Solución |
+| :--- | :--- | :--- |
+| `docker compose` dice *«Define DB_PASSWORD en el archivo .env»* | Falta la clave en el `.env` | Paso 3.2 |
+| `/dbgate/` da error 500 | `.htpasswd` no existía al hacer el `up` (Docker creó una carpeta) o no es legible | Aviso del paso 3.5; comprueba `ls -l .htpasswd` y `chmod 644 .htpasswd` |
+| `/dbgate/` te deja entrar pero la conexión «AWS RDS Bella Napoli» falla | Clave o endpoint mal en el `.env`, o el Security Group de RDS no admite a la EC2 | Revisa el `.env` y la fase 1.2; vuelve a ejecutar `bash scripts/dbgate_conexion_rds.sh` |
+| Cloudflare muestra error 530 o 1033 | El túnel acaba de arrancar o la ruta del túnel no apunta a `http://frontend-web:80` | Espera 30 s; revisa la fase 2 y `docker logs pizzeria-prod-tunnel` |
+| Error 502 al abrir la web | El backend no ha arrancado (suele ser la conexión con RDS) | `docker logs pizzeria-prod-backend --tail 30` |
+| Tras arrancar la EC2 no hay contenedores | Los habías parado a mano | Fase 6: `up -d` de los dos archivos |

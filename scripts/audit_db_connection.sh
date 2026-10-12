@@ -291,9 +291,9 @@ else
 
     if [ "$NEED_DBGATE_FIX" = true ]; then
         print_solution_box "Inyectar Conexión SSL en DbGate" \
-            "Copia y pega este comando directo de una sola línea (sin problemas de EOF):" \
+            "Ejecuta este script: lee la conexión de tu .env sin escribir la clave en la terminal:" \
             "" \
-            "echo '{\"_id\":\"pizzeria_rds\",\"engine\":\"postgres@dbgate-plugin-postgres\",\"server\":\"$CLEAN_DB_HOST\",\"port\":$DB_PORT,\"user\":\"$DB_USER\",\"password\":\"$DB_PASSWORD\",\"defaultDatabase\":\"$DB_NAME\",\"displayName\":\"AWS RDS Bella Napoli\",\"useSsl\":true}' | docker exec -i pizzeria-prod-dbgate sh -c 'cat > /root/.dbgate/connections.jsonl' && docker compose -f docker-compose.db.yml restart dbgate"
+            "bash scripts/dbgate_conexion_rds.sh"
     fi
 fi
 
