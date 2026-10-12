@@ -214,6 +214,41 @@ class ArranquePedidoTest {
         assertEquals(104, escenario.almacen.obtenerId())
     }
 
+    // --- Cuándo se comprueba el pedido guardado ------------------------------
+
+    @Test
+    fun sinPedidoGuardadoNuncaSeComprueba() {
+        for (enActividad in listOf(false, true)) {
+            for (enProceso in listOf(false, true)) {
+                assertFalse(debeComprobarPedidoGuardado(false, enActividad, enProceso))
+            }
+        }
+    }
+
+    @Test
+    fun alAbrirDeCeroSeComprueba() {
+        // Arranque en frío: ni la actividad ni el proceso lo han comprobado.
+        assertTrue(debeComprobarPedidoGuardado(true, resueltoEnActividad = false, comprobadoEnProceso = false))
+    }
+
+    @Test
+    fun trasQuitarLaAppDeRecientesConElProcesoVivoSeComprueba() {
+        // El fallo observado: el proceso ya comprobó (ya no había pedido), pero la
+        // actividad empieza de cero y ahora sí hay un pedido guardado.
+        assertTrue(debeComprobarPedidoGuardado(true, resueltoEnActividad = false, comprobadoEnProceso = true))
+    }
+
+    @Test
+    fun siAndroidCierraElProcesoYRestauraLaActividadSeComprueba() {
+        // La actividad se restaura con su estado, pero el proceso nuevo no ha comprobado nada.
+        assertTrue(debeComprobarPedidoGuardado(true, resueltoEnActividad = true, comprobadoEnProceso = false))
+    }
+
+    @Test
+    fun alGirarLaPantallaNoSeVuelveAComprobar() {
+        assertFalse(debeComprobarPedidoGuardado(true, resueltoEnActividad = true, comprobadoEnProceso = true))
+    }
+
     // --- Criterio de pedido terminado ----------------------------------------
 
     @Test

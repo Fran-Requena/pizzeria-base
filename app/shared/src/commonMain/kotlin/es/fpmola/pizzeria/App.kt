@@ -17,6 +17,7 @@ import es.fpmola.pizzeria.carrito.ResultadoAnadir
 import es.fpmola.pizzeria.di.Dependencias
 import es.fpmola.pizzeria.pedidos.DecisionArranque
 import es.fpmola.pizzeria.pedidos.Pedido
+import es.fpmola.pizzeria.pedidos.debeComprobarPedidoGuardado
 import es.fpmola.pizzeria.pedidos.decidirArranque
 import es.fpmola.pizzeria.pedidos.seguimientoTerminado
 import es.fpmola.pizzeria.ui.AvisoDemo
@@ -26,6 +27,7 @@ import es.fpmola.pizzeria.ui.catalogo.PantallaCatalogo
 import es.fpmola.pizzeria.ui.catalogo.PantallaDetalle
 import es.fpmola.pizzeria.ui.configuracion.ConfiguracionViewModel
 import es.fpmola.pizzeria.ui.configuracion.PantallaConfiguracion
+import es.fpmola.pizzeria.ui.inicio.InicioViewModel
 import es.fpmola.pizzeria.ui.inicio.PantallaInicio
 import es.fpmola.pizzeria.ui.pedidos.DatosPedidoViewModel
 import es.fpmola.pizzeria.ui.pedidos.PantallaBuscandoPedido
@@ -39,10 +41,11 @@ import kotlinx.coroutines.launch
 private enum class Pantalla { Configuracion, Inicio, Catalogo, Detalle, Carrito, Datos, Confirmado }
 
 /**
- * true cuando este proceso ya ha comprobado el pedido guardado. Es una variable
- * del proceso (no del estado guardado de la actividad): al girar la pantalla no
- * se vuelve a comprobar, pero si Android cierra el proceso mientras el cliente
- * paga en el navegador, el proceso nuevo sí lo comprueba al arrancar.
+ * true cuando este proceso ya ha comprobado el pedido guardado. Por sí sola NO basta
+ * para saltarse la comprobación: quitar la app de "recientes" descarta el estado de la
+ * actividad pero puede dejar vivo el proceso, y la actividad nueva debe comprobar el
+ * pedido igualmente. Se combina con el indicador guardado en el estado de la actividad
+ * (ver [debeComprobarPedidoGuardado]).
  */
 private var pedidoGuardadoComprobado = false
 
@@ -67,7 +70,13 @@ fun App(
     manejadorAtras: @Composable (habilitado: Boolean, alAtras: () -> Unit) -> Unit = { _, _ -> },
 ) {
     TemaPizzeria {
-        var pantalla by rememberSaveable { mutableStateOf(Pantalla.Configuracion) }
+        // Con un servidor ya guardado se arranca en el inicio (la conexión se comprueba
+        // allí, en segundo plano). Solo sin servidor se pide en la configuración.
+        var pantalla by rememberSaveable {
+            mutableStateOf(
+                if (Dependencias.ajustes().obtenerUrlBase() != null) Pantalla.Inicio else Pantalla.Configuracion,
+            )
+        }
         var pizzaSeleccionadaId by rememberSaveable { mutableStateOf<Int?>(null) }
         // Cambian al guardar otro servidor o al pulsar "Reintentar": el catálogo
         // de un servidor anterior no se reutiliza.
@@ -86,9 +95,21 @@ fun App(
         var enviandoPedido by remember { mutableStateOf(false) }
         val carrito = remember { Dependencias.carrito() }
         val pedidoEnCurso = remember { Dependencias.pedidoEnCurso() }
+        // Se guarda con el estado de la actividad: vale true tras girar la pantalla y
+        // vuelve a false cuando la actividad empieza de cero (por ejemplo, tras quitar
+        // la app de "recientes", aunque el proceso siga vivo).
+        var arranqueResuelto by rememberSaveable { mutableStateOf(false) }
+        // Cambia al pulsar "Reintentar" en el inicio.
+        var intentoInicio by rememberSaveable { mutableStateOf(0) }
         // true mientras se comprueba en el servidor el pedido guardado al arrancar.
         var comprobandoPedido by remember {
-            mutableStateOf(!pedidoGuardadoComprobado && pedidoEnCurso.obtenerId() != null)
+            mutableStateOf(
+                debeComprobarPedidoGuardado(
+                    hayPedidoGuardado = pedidoEnCurso.obtenerId() != null,
+                    resueltoEnActividad = arranqueResuelto,
+                    comprobadoEnProceso = pedidoGuardadoComprobado,
+                ),
+            )
         }
 
         LaunchedEffect(Unit) {
@@ -102,6 +123,7 @@ fun App(
                 }
             }
             pedidoGuardadoComprobado = true
+            arranqueResuelto = true
             comprobandoPedido = false
         }
 
@@ -151,10 +173,20 @@ fun App(
                     )
                 }
                 Pantalla.Inicio -> {
-                    val urlServidor = remember { Dependencias.ajustes().obtenerUrlBase() }
+                    val modelo = viewModel<InicioViewModel>(key = "inicio-$versionServidor") {
+                        InicioViewModel(
+                            ajustes = Dependencias.ajustes(),
+                            repositorioSalud = Dependencias.repositorioSalud(),
+                        )
+                    }
+                    // La comprobación va en segundo plano: la pantalla se ve ya.
+                    LaunchedEffect(modelo, intentoInicio) {
+                        modelo.comprobar()
+                    }
                     PantallaInicio(
-                        urlServidor = urlServidor,
+                        estado = modelo.estado,
                         alVerCarta = { pantalla = Pantalla.Catalogo },
+                        alReintentar = { intentoInicio++ },
                         alCambiarServidor = { pantalla = Pantalla.Configuracion },
                         modifier = modificador,
                     )

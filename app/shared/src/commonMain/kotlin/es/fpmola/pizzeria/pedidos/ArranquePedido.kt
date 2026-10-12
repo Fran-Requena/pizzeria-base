@@ -12,6 +12,25 @@ import kotlin.coroutines.cancellation.CancellationException
 val Pedido.seguimientoTerminado: Boolean
     get() = esFinal && !pagoConTarjetaPendiente
 
+/**
+ * Si al abrir la app hay que comprobar el pedido guardado en el servidor.
+ *
+ * Solo se omite cuando se cumplen las DOS condiciones siguientes, que es lo que pasa
+ * al girar la pantalla (la actividad se recrea con su estado y el proceso sigue vivo):
+ * - [resueltoEnActividad]: el estado guardado de la actividad dice que ya se comprobó.
+ * - [comprobadoEnProceso]: este proceso ya hizo la comprobación.
+ *
+ * Si falla alguna, se comprueba. Quitar la app de "recientes" descarta el estado de la
+ * actividad pero puede dejar vivo el proceso (la primera condición falla); y si Android
+ * cierra el proceso mientras el cliente paga en el navegador, el proceso nuevo no ha
+ * comprobado nada (falla la segunda).
+ */
+fun debeComprobarPedidoGuardado(
+    hayPedidoGuardado: Boolean,
+    resueltoEnActividad: Boolean,
+    comprobadoEnProceso: Boolean,
+): Boolean = hayPedidoGuardado && !(resueltoEnActividad && comprobadoEnProceso)
+
 /** Qué hace la app al arrancar respecto al pedido guardado. */
 sealed interface DecisionArranque {
 
