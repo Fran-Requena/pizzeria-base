@@ -41,9 +41,34 @@ jobs:
     # Fijado a 24.04: ubuntu-latest migra a 26.04 entre el 19-10-2026 y el 19-11-2026. Revisar tras probar con ubuntu-26.04.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      URL_SERVIDOR: ${{ vars.URL_SERVIDOR }}
+      # Commit del APK, para la pantalla de diagnóstico (Gradle lo recorta a 7 caracteres).
+      COMMIT_SHA: ${{ github.sha }}
     steps:
       - name: Descargar el código
         uses: actions/checkout@v5.0.0
+
+      # La URL del servidor se fija al compilar con la variable de repositorio URL_SERVIDOR
+      # (Settings > Secrets and variables > Actions > Variables). Sin ella, APK genérico.
+      - name: Comprobar la variable URL_SERVIDOR
+        run: |
+          set -euo pipefail
+          URL="$(printf '%s' "$URL_SERVIDOR" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          if [ -z "$URL" ]; then
+            echo "URL_SERVIDOR no está definida: se compila el APK genérico (el servidor se pide en la app)."
+          else
+            case "$URL" in
+              https://*[[:space:]]*|*\"*|*\\*) VALIDA=no ;;
+              https://?*) VALIDA=si ;;
+              *) VALIDA=no ;;
+            esac
+            if [ "$VALIDA" = "no" ]; then
+              echo "::error title=URL_SERVIDOR no es válida::La variable de repositorio URL_SERVIDOR debe empezar por https:// y no llevar espacios ni comillas. Valor recibido: $URL"
+              exit 1
+            fi
+            echo "El APK llevará $URL como servidor por defecto."
+          fi
 
       - name: Instalar Java 21 (Azul Zulu, el que exige el daemon de Gradle)
         uses: actions/setup-java@v5.0.0
@@ -119,9 +144,34 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+    env:
+      URL_SERVIDOR: ${{ vars.URL_SERVIDOR }}
+      # Commit del APK, para la pantalla de diagnóstico (Gradle lo recorta a 7 caracteres).
+      COMMIT_SHA: ${{ github.sha }}
     steps:
       - name: Descargar el código
         uses: actions/checkout@v5.0.0
+
+      # La URL del servidor se fija al compilar con la variable de repositorio URL_SERVIDOR
+      # (Settings > Secrets and variables > Actions > Variables). Sin ella, APK genérico.
+      - name: Comprobar la variable URL_SERVIDOR
+        run: |
+          set -euo pipefail
+          URL="$(printf '%s' "$URL_SERVIDOR" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+          if [ -z "$URL" ]; then
+            echo "URL_SERVIDOR no está definida: se compila el APK genérico (el servidor se pide en la app)."
+          else
+            case "$URL" in
+              https://*[[:space:]]*|*\"*|*\\*) VALIDA=no ;;
+              https://?*) VALIDA=si ;;
+              *) VALIDA=no ;;
+            esac
+            if [ "$VALIDA" = "no" ]; then
+              echo "::error title=URL_SERVIDOR no es válida::La variable de repositorio URL_SERVIDOR debe empezar por https:// y no llevar espacios ni comillas. Valor recibido: $URL"
+              exit 1
+            fi
+            echo "El APK llevará $URL como servidor por defecto."
+          fi
 
       - name: Instalar Java 21 (Azul Zulu, el que exige el daemon de Gradle)
         uses: actions/setup-java@v5.0.0

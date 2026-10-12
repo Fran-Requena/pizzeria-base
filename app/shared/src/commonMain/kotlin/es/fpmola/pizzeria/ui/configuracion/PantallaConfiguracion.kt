@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import es.fpmola.pizzeria.ui.componentes.BotonContorno
+import es.fpmola.pizzeria.ui.componentes.BotonTexto
 import es.fpmola.pizzeria.ui.componentes.CampoTextoPizzeria
 
 /**
@@ -34,6 +35,8 @@ fun PantallaConfiguracion(
     alCambiarUrl: (String) -> Unit,
     alProbarConexion: () -> Unit,
     alGuardar: () -> Unit,
+    alAbrirDiagnostico: () -> Unit,
+    alVolver: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -100,6 +103,15 @@ fun PantallaConfiguracion(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Guardar y continuar")
+        }
+        // Solo se puede salir sin guardar si ya hay un servidor al que volver.
+        if (alVolver != null) {
+            BotonTexto(onClick = alVolver, modifier = Modifier.fillMaxWidth()) {
+                Text("Volver sin cambiar")
+            }
+        }
+        BotonTexto(onClick = alAbrirDiagnostico, modifier = Modifier.fillMaxWidth()) {
+            Text("Diagnóstico", style = MaterialTheme.typography.labelSmall)
         }
     }
 }

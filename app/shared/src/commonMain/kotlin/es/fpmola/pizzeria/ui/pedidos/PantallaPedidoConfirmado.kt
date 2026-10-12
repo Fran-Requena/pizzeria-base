@@ -24,6 +24,7 @@ import es.fpmola.pizzeria.pedidos.Pedido
 import es.fpmola.pizzeria.pedidos.TipoPedido
 import es.fpmola.pizzeria.ui.componentes.BarraProgresoPedido
 import es.fpmola.pizzeria.ui.componentes.BotonContorno
+import es.fpmola.pizzeria.ui.componentes.BotonTexto
 import es.fpmola.pizzeria.ui.componentes.InsigniaEstado
 import es.fpmola.pizzeria.ui.componentes.TarjetaPizzeria
 import es.fpmola.pizzeria.ui.componentes.emoji
@@ -41,6 +42,7 @@ fun PantallaPedidoConfirmado(
     alPagarConTarjeta: () -> Unit,
     alComprobarPago: () -> Unit,
     alVolverAlInicio: () -> Unit,
+    alDejarDeSeguir: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val pedido = estado.pedido
@@ -86,24 +88,36 @@ fun PantallaPedidoConfirmado(
         }
 
         HorizontalDivider()
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceContainer)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            BotonContorno(
-                onClick = alActualizar,
-                enabled = !estado.actualizando,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(if (estado.actualizando) "Actualizando…" else "Actualizar")
+                BotonContorno(
+                    onClick = alActualizar,
+                    enabled = !estado.actualizando,
+                ) {
+                    Text(if (estado.actualizando) "Actualizando…" else "Actualizar")
+                }
+                Button(
+                    onClick = alVolverAlInicio,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Volver al inicio")
+                }
             }
-            Button(
-                onClick = alVolverAlInicio,
-                modifier = Modifier.weight(1f),
+            // La app recuerda el pedido hasta que termina: este botón lo olvida.
+            BotonTexto(
+                onClick = alDejarDeSeguir,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Volver al inicio")
+                Text("Dejar de seguir este pedido")
             }
         }
     }

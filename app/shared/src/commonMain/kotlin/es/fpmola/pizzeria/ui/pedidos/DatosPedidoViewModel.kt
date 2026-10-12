@@ -6,6 +6,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import es.fpmola.pizzeria.carrito.Carrito
+import es.fpmola.pizzeria.diagnostico.CategoriaDiagnostico
+import es.fpmola.pizzeria.diagnostico.RegistroDiagnostico
 import es.fpmola.pizzeria.pagos.AVISO_PAGO_NO_INICIADO
 import es.fpmola.pizzeria.pagos.AbridorUrl
 import es.fpmola.pizzeria.pagos.RepositorioPagos
@@ -15,6 +17,7 @@ import es.fpmola.pizzeria.pedidos.DatosPedido
 import es.fpmola.pizzeria.pedidos.ErroresDatos
 import es.fpmola.pizzeria.pedidos.METODO_PAGO_TARJETA
 import es.fpmola.pizzeria.pedidos.Pedido
+import es.fpmola.pizzeria.pedidos.PedidoEnCurso
 import es.fpmola.pizzeria.pedidos.PeticionPedido
 import es.fpmola.pizzeria.pedidos.RepositorioPedidos
 import es.fpmola.pizzeria.pedidos.ResultadoEnvioPedido
@@ -62,12 +65,17 @@ data class EstadoDatosPedido(
  * - Con pago con tarjeta: crear pedido, crear sesión de pago y abrir su URL.
  *   Si el pedido se crea y la sesión falla, NO se crea otro pedido: se guarda el
  *   pedido creado y [EstadoDatosPedido.avisoPago] explica el fallo.
+ * - En cuanto el servidor crea el pedido, y antes de abrir el navegador para
+ *   pagar, se guarda su id en [PedidoEnCurso]: si la app se recrea o el proceso
+ *   se cierra mientras el cliente paga, el seguimiento se puede retomar.
  */
 class DatosPedidoViewModel(
     private val repositorio: RepositorioPedidos,
     private val carrito: Carrito,
     private val repositorioPagos: RepositorioPagos,
     private val abridor: AbridorUrl,
+    private val pedidoEnCurso: PedidoEnCurso,
+    private val registro: RegistroDiagnostico,
 ) : ViewModel() {
 
     var estado by mutableStateOf(EstadoDatosPedido())
@@ -157,9 +165,17 @@ class DatosPedidoViewModel(
         estado = when (resultado) {
             is ResultadoEnvioPedido.Creado -> {
                 carrito.vaciar()
+                val conTarjeta = peticion.metodoPago == METODO_PAGO_TARJETA
+                registro.anotar(
+                    CategoriaDiagnostico.PEDIDO,
+                    "Pedido n.º ${resultado.pedido.id} creado (pago ${if (conTarjeta) "con tarjeta" else "en el local"}).",
+                )
+                // Antes de abrir el navegador: es lo que se pierde si la app se recrea.
+                pedidoEnCurso.guardarId(resultado.pedido.id)
+                registro.anotar(CategoriaDiagnostico.PEDIDO, "Id del pedido n.º ${resultado.pedido.id} guardado en el teléfono.")
                 // "enviando" sigue activo mientras se inicia el pago: así no se
                 // puede enviar otro pedido mientras tanto.
-                val aviso = if (peticion.metodoPago == METODO_PAGO_TARJETA) {
+                val aviso = if (conTarjeta) {
                     iniciarPago(resultado.pedido.id)
                 } else {
                     null
@@ -197,8 +213,14 @@ class DatosPedidoViewModel(
             ResultadoInicioPago.Fallido("Ha ocurrido un error inesperado.")
         }
         return when (resultado) {
-            ResultadoInicioPago.Iniciado -> null
-            is ResultadoInicioPago.Fallido -> "$AVISO_PAGO_NO_INICIADO ${resultado.mensaje}"
+            ResultadoInicioPago.Iniciado -> {
+                registro.anotar(CategoriaDiagnostico.PAGO, "Pedido n.º $pedidoId: sesión de pago creada y navegador abierto.")
+                null
+            }
+            is ResultadoInicioPago.Fallido -> {
+                registro.anotar(CategoriaDiagnostico.PAGO, "Pedido n.º $pedidoId: no se pudo iniciar el pago (${resultado.mensaje}).")
+                "$AVISO_PAGO_NO_INICIADO ${resultado.mensaje}"
+            }
         }
     }
 

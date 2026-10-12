@@ -1,10 +1,14 @@
 package es.fpmola.pizzeria.ui.pedidos
 
 import es.fpmola.pizzeria.carrito.Carrito
+import es.fpmola.pizzeria.diagnostico.CategoriaDiagnostico
+import es.fpmola.pizzeria.diagnostico.RegistroDiagnostico
 import es.fpmola.pizzeria.pagos.AVISO_PAGO_NO_INICIADO
 import es.fpmola.pizzeria.pagos.AbridorUrl
 import es.fpmola.pizzeria.pagos.MENSAJE_URL_NO_SEGURA
 import es.fpmola.pizzeria.pagos.RepositorioPagos
+import es.fpmola.pizzeria.pagos.ResultadoAbrirUrl
+import es.fpmola.pizzeria.pedidos.PedidoEnCurso
 import es.fpmola.pizzeria.pedidos.RepositorioPedidos
 import es.fpmola.pizzeria.pedidos.TipoPedido
 import es.fpmola.pizzeria.prueba.AbridorFalso
@@ -12,6 +16,8 @@ import es.fpmola.pizzeria.prueba.AjustesEnMemoria
 import es.fpmola.pizzeria.prueba.JSON_PEDIDO_CREADO
 import es.fpmola.pizzeria.prueba.JSON_PEDIDO_CREADO_TARJETA
 import es.fpmola.pizzeria.prueba.JSON_SESION_PAGO
+import es.fpmola.pizzeria.prueba.PedidoEnCursoEnMemoria
+import es.fpmola.pizzeria.prueba.RegistroEnMemoria
 import es.fpmola.pizzeria.prueba.carritoConDosPizzas
 import es.fpmola.pizzeria.prueba.crearClientePrueba
 import es.fpmola.pizzeria.prueba.responderJson
@@ -36,6 +42,8 @@ class DatosPedidoViewModelTest {
         motor: MockEngine,
         carrito: Carrito = carritoConDosPizzas(),
         abridor: AbridorUrl = AbridorFalso(),
+        pedidoEnCurso: PedidoEnCurso = PedidoEnCursoEnMemoria(),
+        registro: RegistroDiagnostico = RegistroEnMemoria(),
     ): DatosPedidoViewModel {
         val cliente = crearClientePrueba(AjustesEnMemoria(), motor)
         return DatosPedidoViewModel(
@@ -43,6 +51,8 @@ class DatosPedidoViewModelTest {
             carrito = carrito,
             repositorioPagos = RepositorioPagos(cliente),
             abridor = abridor,
+            pedidoEnCurso = pedidoEnCurso,
+            registro = registro,
         )
     }
 
@@ -321,6 +331,172 @@ class DatosPedidoViewModelTest {
         assertNull(modelo.estado.avisoPago)
         assertFalse(modelo.estado.enviando)
         assertTrue(carrito.estaVacio)
+    }
+
+    // --- Pedido en curso (sobrevive a la recreación de la app) ---------------
+
+    @Test
+    fun alCrearUnPedidoSinTarjetaSeGuardaSoloSuId() = runTest {
+        val servidor = ServidorConTarjeta { responderJson(JSON_SESION_PAGO) }
+        val pedidoEnCurso = PedidoEnCursoEnMemoria()
+        val modelo = crearViewModel(servidor.motor, pedidoEnCurso = pedidoEnCurso)
+        modelo.rellenarDomicilio()
+
+        modelo.enviarPedido()
+
+        assertEquals(104, pedidoEnCurso.obtenerId())
+    }
+
+    @Test
+    fun conTarjetaElIdSeGuardaAntesDeAbrirElNavegador() = runTest {
+        val servidor = ServidorConTarjeta { responderJson(JSON_SESION_PAGO) }
+        val pedidoEnCurso = PedidoEnCursoEnMemoria()
+        var idAlAbrir: Int? = null
+        val abridor = object : AbridorUrl {
+            override fun abrir(url: String): ResultadoAbrirUrl {
+                idAlAbrir = pedidoEnCurso.obtenerId()
+                return ResultadoAbrirUrl.Abierta
+            }
+        }
+        val modelo = crearViewModel(servidor.motor, abridor = abridor, pedidoEnCurso = pedidoEnCurso)
+        modelo.rellenarDomicilio()
+        modelo.cambiarPagoConTarjeta(true)
+
+        modelo.enviarPedido()
+
+        assertEquals(104, idAlAbrir, "al abrir Stripe el id ya debía estar guardado")
+        assertEquals(104, pedidoEnCurso.obtenerId())
+    }
+
+    @Test
+    fun conTarjetaElRegistroDeDiagnosticoDejaLaSecuenciaDelPago() = runTest {
+        val servidor = ServidorConTarjeta { responderJson(JSON_SESION_PAGO) }
+        val registro = RegistroEnMemoria()
+        val modelo = crearViewModel(servidor.motor, registro = registro)
+        modelo.rellenarDomicilio()
+        modelo.cambiarPagoConTarjeta(true)
+
+        modelo.enviarPedido()
+
+        val textos = registro.eventos().map { "${it.categoria}: ${it.texto}" }
+        assertEquals(
+            listOf(
+                "${CategoriaDiagnostico.PEDIDO}: Pedido n.º 104 creado (pago con tarjeta).",
+                "${CategoriaDiagnostico.PEDIDO}: Id del pedido n.º 104 guardado en el teléfono.",
+                "${CategoriaDiagnostico.PAGO}: Pedido n.º 104: sesión de pago creada y navegador abierto.",
+            ),
+            textos,
+        )
+    }
+
+    @Test
+    fun siNoSePuedeIniciarElPagoElRegistroLoDiceSinDatosPersonales() = runTest {
+        val servidor = ServidorConTarjeta {
+            responderJson("""{"success":false}""", HttpStatusCode.ServiceUnavailable)
+        }
+        val registro = RegistroEnMemoria()
+        val modelo = crearViewModel(servidor.motor, registro = registro)
+        modelo.rellenarDomicilio()
+        modelo.cambiarPagoConTarjeta(true)
+
+        modelo.enviarPedido()
+
+        val todo = registro.eventos().joinToString(" ") { it.texto }
+        assertTrue(todo.contains("no se pudo iniciar el pago"), todo)
+        // Ni el nombre, ni el teléfono, ni la dirección del formulario aparecen.
+        assertFalse(todo.contains("Ana"), todo)
+        assertFalse(todo.contains("600"), todo)
+        assertFalse(todo.contains("Calle Mayor"), todo)
+    }
+
+    @Test
+    fun siFallaCrearLaSesionElPedidoCreadoSigueGuardado() = runTest {
+        val servidor = ServidorConTarjeta {
+            responderJson("""{"success":false}""", HttpStatusCode.ServiceUnavailable)
+        }
+        val pedidoEnCurso = PedidoEnCursoEnMemoria()
+        val modelo = crearViewModel(servidor.motor, pedidoEnCurso = pedidoEnCurso)
+        modelo.rellenarDomicilio()
+        modelo.cambiarPagoConTarjeta(true)
+
+        modelo.enviarPedido()
+
+        assertNotNull(modelo.estado.avisoPago)
+        assertEquals(104, pedidoEnCurso.obtenerId())
+    }
+
+    @Test
+    fun siElPedidoNoSeCreaNoSeGuardaNada() = runTest {
+        val rechazado = MockEngine {
+            responderJson("""{"success":false,"message":"La pizza con ID 3 no existe."}""", HttpStatusCode.BadRequest)
+        }
+        val caidaDeRed = MockEngine { throw RuntimeException("Red no disponible (simulada)") }
+        for (motor in listOf(rechazado, caidaDeRed)) {
+            val pedidoEnCurso = PedidoEnCursoEnMemoria()
+            val modelo = crearViewModel(motor, pedidoEnCurso = pedidoEnCurso)
+            modelo.rellenarDomicilio()
+
+            modelo.enviarPedido()
+
+            assertNull(modelo.estado.pedidoCreado)
+            assertNull(pedidoEnCurso.obtenerId())
+        }
+    }
+
+    @Test
+    fun unPedidoNuevoSustituyeAlIdAnterior() = runTest {
+        val servidor = ServidorConTarjeta { responderJson(JSON_SESION_PAGO) }
+        val pedidoEnCurso = PedidoEnCursoEnMemoria(id = 99)
+        val modelo = crearViewModel(servidor.motor, pedidoEnCurso = pedidoEnCurso)
+        modelo.rellenarDomicilio()
+
+        modelo.enviarPedido()
+
+        assertEquals(104, pedidoEnCurso.obtenerId())
+    }
+
+    @Test
+    fun conTarjetaElCarritoVacioNoSacaDeLaPantallaDeDatosMientrasSeInicieElPago() = runTest {
+        // El carrito se vacía al crearse el pedido, pero la sesión de pago aún se está
+        // creando: en ese momento no se debe volver al carrito (fallo observado).
+        val sesionPedida = CompletableDeferred<Unit>()
+        val sesionLiberada = CompletableDeferred<Unit>()
+        val motor = MockEngine { solicitud ->
+            when (solicitud.url.encodedPath) {
+                "/api/pedidos" -> responderJson(JSON_PEDIDO_CREADO_TARJETA, HttpStatusCode.Created)
+                else -> {
+                    sesionPedida.complete(Unit)
+                    sesionLiberada.await()
+                    responderJson(JSON_SESION_PAGO)
+                }
+            }
+        }
+        val carrito = carritoConDosPizzas()
+        val modelo = crearViewModel(motor, carrito)
+        modelo.rellenarDomicilio()
+        modelo.cambiarPagoConTarjeta(true)
+
+        val envio = launch { modelo.enviarPedido() }
+        sesionPedida.await()
+
+        // A mitad del pago: carrito vacío, pedido aún sin publicar, envío en marcha.
+        assertTrue(carrito.estaVacio)
+        assertNull(modelo.estado.pedidoCreado)
+        assertTrue(modelo.estado.enviando)
+        assertFalse(debeVolverAlCarritoVacio(carrito.estaVacio, modelo.estado))
+
+        sesionLiberada.complete(Unit)
+        envio.join()
+
+        // Al terminar el pedido está creado y tampoco se vuelve al carrito.
+        assertEquals(104, modelo.estado.pedidoCreado?.id)
+        assertFalse(debeVolverAlCarritoVacio(carrito.estaVacio, modelo.estado))
+    }
+
+    @Test
+    fun conElCarritoVacioSinEnviarNiPedidoSiSeVuelveAlCarrito() {
+        assertTrue(debeVolverAlCarritoVacio(true, EstadoDatosPedido()))
+        assertFalse(debeVolverAlCarritoVacio(false, EstadoDatosPedido()))
     }
 
     @Test

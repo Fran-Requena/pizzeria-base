@@ -13,7 +13,8 @@ import org.koin.dsl.module
  * Dependencias comunes a todas las plataformas.
  *
  * Cada plataforma aporta su propio módulo con lo que depende de ella:
- * [es.fpmola.pizzeria.ajustes.AjustesServidor] y el motor HTTP de Ktor.
+ * [es.fpmola.pizzeria.ajustes.AjustesServidor], [es.fpmola.pizzeria.pedidos.PedidoEnCurso],
+ * el abridor de URL y el motor HTTP de Ktor.
  */
 val moduloComun: Module = module {
     single { ClienteApi(ajustes = get(), motor = get()) }

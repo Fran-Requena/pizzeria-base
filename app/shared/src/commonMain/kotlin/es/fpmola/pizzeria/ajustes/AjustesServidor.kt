@@ -13,4 +13,16 @@ interface AjustesServidor {
 
     /** Guarda la URL base, ya validada y sin barra final. */
     fun guardarUrlBase(url: String)
+
+    /**
+     * URL del servidor fijada al compilar el APK, o null si el APK es genérico.
+     * Ver [AjustesConUrlDeCompilacion].
+     */
+    fun obtenerUrlDeCompilacion(): String? = null
+
+    /**
+     * URL guardada en el teléfono, sin tener en cuenta la de la compilación. Sirve para
+     * saber de dónde sale la URL activa. Por defecto es la misma que [obtenerUrlBase].
+     */
+    fun obtenerUrlGuardada(): String? = obtenerUrlBase()
 }
