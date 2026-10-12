@@ -5,6 +5,8 @@ import es.fpmola.pizzeria.ajustes.AjustesServidor
 import es.fpmola.pizzeria.ajustes.AjustesServidorAndroid
 import es.fpmola.pizzeria.pagos.AbridorUrl
 import es.fpmola.pizzeria.pagos.AbridorUrlAndroid
+import es.fpmola.pizzeria.pedidos.PedidoEnCurso
+import es.fpmola.pizzeria.pedidos.PedidoEnCursoAndroid
 import es.fpmola.pizzeria.red.crearMotorHttp
 import io.ktor.client.engine.HttpClientEngine
 import org.koin.core.context.startKoin
@@ -16,6 +18,7 @@ private fun moduloAndroid(contexto: Context): Module = module {
     single<AjustesServidor> { AjustesServidorAndroid(contexto) }
     single<HttpClientEngine> { crearMotorHttp() }
     single<AbridorUrl> { AbridorUrlAndroid(contexto) }
+    single<PedidoEnCurso> { PedidoEnCursoAndroid(contexto) }
 }
 
 /**
