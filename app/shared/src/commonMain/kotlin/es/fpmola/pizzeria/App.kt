@@ -191,6 +191,7 @@ fun App(
                             carrito = Dependencias.carrito(),
                             repositorioPagos = Dependencias.repositorioPagos(),
                             abridor = Dependencias.abridorUrl(),
+                            pedidoEnCurso = Dependencias.pedidoEnCurso(),
                         )
                     }
                     val estadoDatos = modelo.estado

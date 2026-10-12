@@ -15,6 +15,7 @@ import es.fpmola.pizzeria.pedidos.DatosPedido
 import es.fpmola.pizzeria.pedidos.ErroresDatos
 import es.fpmola.pizzeria.pedidos.METODO_PAGO_TARJETA
 import es.fpmola.pizzeria.pedidos.Pedido
+import es.fpmola.pizzeria.pedidos.PedidoEnCurso
 import es.fpmola.pizzeria.pedidos.PeticionPedido
 import es.fpmola.pizzeria.pedidos.RepositorioPedidos
 import es.fpmola.pizzeria.pedidos.ResultadoEnvioPedido
@@ -62,12 +63,16 @@ data class EstadoDatosPedido(
  * - Con pago con tarjeta: crear pedido, crear sesión de pago y abrir su URL.
  *   Si el pedido se crea y la sesión falla, NO se crea otro pedido: se guarda el
  *   pedido creado y [EstadoDatosPedido.avisoPago] explica el fallo.
+ * - En cuanto el servidor crea el pedido, y antes de abrir el navegador para
+ *   pagar, se guarda su id en [PedidoEnCurso]: si la app se recrea o el proceso
+ *   se cierra mientras el cliente paga, el seguimiento se puede retomar.
  */
 class DatosPedidoViewModel(
     private val repositorio: RepositorioPedidos,
     private val carrito: Carrito,
     private val repositorioPagos: RepositorioPagos,
     private val abridor: AbridorUrl,
+    private val pedidoEnCurso: PedidoEnCurso,
 ) : ViewModel() {
 
     var estado by mutableStateOf(EstadoDatosPedido())
@@ -157,6 +162,8 @@ class DatosPedidoViewModel(
         estado = when (resultado) {
             is ResultadoEnvioPedido.Creado -> {
                 carrito.vaciar()
+                // Antes de abrir el navegador: es lo que se pierde si la app se recrea.
+                pedidoEnCurso.guardarId(resultado.pedido.id)
                 // "enviando" sigue activo mientras se inicia el pago: así no se
                 // puede enviar otro pedido mientras tanto.
                 val aviso = if (peticion.metodoPago == METODO_PAGO_TARJETA) {
