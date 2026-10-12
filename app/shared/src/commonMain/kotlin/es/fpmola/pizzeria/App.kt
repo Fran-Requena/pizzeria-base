@@ -15,7 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import es.fpmola.pizzeria.carrito.ResultadoAnadir
 import es.fpmola.pizzeria.di.Dependencias
+import es.fpmola.pizzeria.pedidos.DecisionArranque
 import es.fpmola.pizzeria.pedidos.Pedido
+import es.fpmola.pizzeria.pedidos.decidirArranque
+import es.fpmola.pizzeria.pedidos.seguimientoTerminado
 import es.fpmola.pizzeria.ui.AvisoDemo
 import es.fpmola.pizzeria.ui.carrito.PantallaCarrito
 import es.fpmola.pizzeria.ui.catalogo.CatalogoViewModel
@@ -25,6 +28,7 @@ import es.fpmola.pizzeria.ui.configuracion.ConfiguracionViewModel
 import es.fpmola.pizzeria.ui.configuracion.PantallaConfiguracion
 import es.fpmola.pizzeria.ui.inicio.PantallaInicio
 import es.fpmola.pizzeria.ui.pedidos.DatosPedidoViewModel
+import es.fpmola.pizzeria.ui.pedidos.PantallaBuscandoPedido
 import es.fpmola.pizzeria.ui.pedidos.PantallaDatosPedido
 import es.fpmola.pizzeria.ui.pedidos.PantallaPedidoConfirmado
 import es.fpmola.pizzeria.ui.pedidos.PedidoConfirmadoViewModel
@@ -35,6 +39,14 @@ import kotlinx.coroutines.launch
 private enum class Pantalla { Configuracion, Inicio, Catalogo, Detalle, Carrito, Datos, Confirmado }
 
 /**
+ * true cuando este proceso ya ha comprobado el pedido guardado. Es una variable
+ * del proceso (no del estado guardado de la actividad): al girar la pantalla no
+ * se vuelve a comprobar, pero si Android cierra el proceso mientras el cliente
+ * paga en el navegador, el proceso nuevo sí lo comprueba al arrancar.
+ */
+private var pedidoGuardadoComprobado = false
+
+/**
  * Raíz de la app: tema de la pizzería, aviso de demo siempre visible y
  * navegación por estado: Inicio → Catálogo → Detalle → Carrito → Datos →
  * Confirmado.
@@ -42,6 +54,9 @@ private enum class Pantalla { Configuracion, Inicio, Catalogo, Detalle, Carrito,
  * Atrás: Detalle → Catálogo; Catálogo → Inicio; Carrito → la pantalla desde la
  * que se abrió; Datos → Carrito (bloqueado mientras se envía el pedido);
  * Confirmado → Inicio (nunca vuelve al formulario).
+ *
+ * Al arrancar, si hay un pedido guardado (ver [es.fpmola.pizzeria.pedidos.PedidoEnCurso])
+ * que no ha terminado, se abre directamente su seguimiento.
  *
  * @param manejadorAtras permite a cada plataforma interceptar el botón atrás
  * del sistema. Recibe si debe estar activo y qué hacer al pulsarlo. En Android
@@ -70,6 +85,25 @@ fun App(
         // true mientras se envía el pedido: el botón atrás no hace nada.
         var enviandoPedido by remember { mutableStateOf(false) }
         val carrito = remember { Dependencias.carrito() }
+        val pedidoEnCurso = remember { Dependencias.pedidoEnCurso() }
+        // true mientras se comprueba en el servidor el pedido guardado al arrancar.
+        var comprobandoPedido by remember {
+            mutableStateOf(!pedidoGuardadoComprobado && pedidoEnCurso.obtenerId() != null)
+        }
+
+        LaunchedEffect(Unit) {
+            if (comprobandoPedido) {
+                val decision = decidirArranque(pedidoEnCurso, Dependencias.repositorioPedidos())
+                if (decision is DecisionArranque.SeguirPedido) {
+                    pedidoConfirmado = decision.pedido
+                    avisoPagoInicial = null
+                    pedidoConfirmadoId = decision.pedidoId
+                    pantalla = Pantalla.Confirmado
+                }
+            }
+            pedidoGuardadoComprobado = true
+            comprobandoPedido = false
+        }
 
         manejadorAtras(
             pantalla != Pantalla.Configuracion && pantalla != Pantalla.Inicio,
@@ -88,7 +122,9 @@ fun App(
                 .padding(relleno)
                 .fillMaxSize()
 
-            when (pantalla) {
+            if (comprobandoPedido) {
+                PantallaBuscandoPedido(modifier = modificador)
+            } else when (pantalla) {
                 Pantalla.Configuracion -> {
                     val modelo = viewModel {
                         ConfiguracionViewModel(
@@ -101,7 +137,12 @@ fun App(
                         alCambiarUrl = modelo::cambiarUrl,
                         alProbarConexion = modelo::probarConexion,
                         alGuardar = {
+                            val urlAnterior = Dependencias.ajustes().obtenerUrlBase()
                             if (modelo.guardarUrl()) {
+                                // El pedido guardado es de otro servidor: aquí no existe o es otro.
+                                if (urlAnterior != Dependencias.ajustes().obtenerUrlBase()) {
+                                    pedidoEnCurso.olvidar()
+                                }
                                 versionServidor++
                                 pantalla = Pantalla.Inicio
                             }
@@ -263,6 +304,11 @@ fun App(
                                 errorPagoInicial = avisoPagoInicial,
                             )
                         }
+                        // Un pedido terminado ya no se retoma al arrancar.
+                        val terminado = modelo.estado.pedido?.seguimientoTerminado == true
+                        LaunchedEffect(terminado, id) {
+                            if (terminado && pedidoEnCurso.obtenerId() == id) pedidoEnCurso.olvidar()
+                        }
                         // Bucle cancelable: se detiene al salir de la pantalla o
                         // cuando el estado del pedido es final.
                         LaunchedEffect(modelo) {
@@ -275,6 +321,12 @@ fun App(
                             alPagarConTarjeta = { alcance.launch { modelo.pagarConTarjeta() } },
                             alComprobarPago = { alcance.launch { modelo.comprobarPago() } },
                             alVolverAlInicio = { pantalla = Pantalla.Inicio },
+                            alDejarDeSeguir = {
+                                pedidoEnCurso.olvidar()
+                                pedidoConfirmadoId = null
+                                pedidoConfirmado = null
+                                pantalla = Pantalla.Inicio
+                            },
                             modifier = modificador,
                         )
                     }
