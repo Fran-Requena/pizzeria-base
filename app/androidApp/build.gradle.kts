@@ -11,6 +11,13 @@ kotlin {
     }
 }
 
+// Commit con el que se compila (hash corto), para la pantalla de diagnóstico. El CI lo pasa
+// en COMMIT_SHA (github.sha); en una compilación local queda "local".
+val commitCompilacion: String = providers.environmentVariable("COMMIT_SHA")
+    .orElse(providers.environmentVariable("GITHUB_SHA"))
+    .orElse("local")
+    .get().trim().take(7).filter { it.isLetterOrDigit() }.ifEmpty { "local" }
+
 // URL del servidor fijada al compilar. Viene de la variable de entorno URL_SERVIDOR (en el
 // CI, la variable de repositorio del mismo nombre; ver app/README.md). Vacía o ausente:
 // APK genérico, que pide el servidor en la configuración.
@@ -43,6 +50,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         buildConfigField("String", "URL_SERVIDOR", "\"$urlServidor\"")
+        buildConfigField("String", "COMMIT", "\"$commitCompilacion\"")
     }
     packaging {
         resources {

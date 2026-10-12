@@ -19,4 +19,10 @@ interface AjustesServidor {
      * Ver [AjustesConUrlDeCompilacion].
      */
     fun obtenerUrlDeCompilacion(): String? = null
+
+    /**
+     * URL guardada en el teléfono, sin tener en cuenta la de la compilación. Sirve para
+     * saber de dónde sale la URL activa. Por defecto es la misma que [obtenerUrlBase].
+     */
+    fun obtenerUrlGuardada(): String? = obtenerUrlBase()
 }

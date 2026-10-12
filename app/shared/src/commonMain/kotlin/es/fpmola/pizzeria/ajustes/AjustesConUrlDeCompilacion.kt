@@ -29,4 +29,6 @@ class AjustesConUrlDeCompilacion(
     }
 
     override fun obtenerUrlDeCompilacion(): String? = urlDeCompilacion
+
+    override fun obtenerUrlGuardada(): String? = guardados.obtenerUrlBase()
 }

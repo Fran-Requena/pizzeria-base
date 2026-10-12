@@ -43,6 +43,8 @@ jobs:
     timeout-minutes: 30
     env:
       URL_SERVIDOR: ${{ vars.URL_SERVIDOR }}
+      # Commit del APK, para la pantalla de diagnóstico (Gradle lo recorta a 7 caracteres).
+      COMMIT_SHA: ${{ github.sha }}
     steps:
       - name: Descargar el código
         uses: actions/checkout@v5.0.0
@@ -144,6 +146,8 @@ jobs:
       contents: write
     env:
       URL_SERVIDOR: ${{ vars.URL_SERVIDOR }}
+      # Commit del APK, para la pantalla de diagnóstico (Gradle lo recorta a 7 caracteres).
+      COMMIT_SHA: ${{ github.sha }}
     steps:
       - name: Descargar el código
         uses: actions/checkout@v5.0.0

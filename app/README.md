@@ -75,3 +75,23 @@ se corrige desde ese enlace o borrando los datos de la app.
 
 Con el JDK instalado, la variable se lee del entorno al compilar:
 `URL_SERVIDOR=https://dam-01.guillermofoix.org ./gradlew :androidApp:assembleDebug`
+
+### Pantalla de diagnóstico
+
+Sirve para ver, sin herramientas de desarrollo, qué hace la app. Se abre desde el inicio:
+**Ajustes del servidor** (o **Cambiar servidor**) → **Diagnóstico** (enlace pequeño al final).
+
+Muestra:
+
+- **Versión de la app** y el **hash corto del commit** con el que se compiló (el CI lo pasa en la
+  variable `COMMIT_SHA`; en una compilación local aparece `local`).
+- **Servidor activo** y su **origen**: guardado en el teléfono, fijado al compilar o ninguno.
+- **Pedido guardado**: el número del pedido que la app sigue, o «ninguno».
+- **Última comprobación al arrancar**: qué decidió (sin pedido, pedido vivo, terminado, no existe,
+  sin conexión…), a qué hora y si olvidó el número del pedido y por qué.
+- **Últimos sucesos** (los 80 más recientes, aunque la app se haya cerrado): proceso iniciado,
+  actividad creada/visible/en segundo plano/destruida, pedido creado, número guardado, pago
+  iniciado, navegación al seguimiento, números olvidados…
+
+No muestra datos personales (ni nombre, ni teléfono, ni dirección): solo números de pedido, estados,
+códigos y direcciones del servidor. El botón **Borrar sucesos** vacía el historial.

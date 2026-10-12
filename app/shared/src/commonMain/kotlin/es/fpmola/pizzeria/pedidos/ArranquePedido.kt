@@ -60,31 +60,88 @@ sealed interface DecisionArranque {
 suspend fun decidirArranque(
     almacen: PedidoEnCurso,
     repositorio: RepositorioPedidos,
-): DecisionArranque {
-    val id = almacen.obtenerId() ?: return DecisionArranque.ArranqueNormal
+): DecisionArranque = evaluarArranque(almacen, repositorio).decision
+
+/** Por qué [decidirArranque] decidió lo que decidió (para la pantalla de diagnóstico). */
+enum class CausaArranque(val etiqueta: String) {
+    SinPedidoGuardado("No había ningún pedido guardado."),
+    PedidoVivo("El pedido sigue vivo: se abre su seguimiento."),
+    PedidoTerminado("El pedido ya había terminado: se olvida el id."),
+    PedidoNoExiste("El servidor dice que el pedido no existe (404): se olvida el id."),
+    ErrorPermanente("El servidor rechazó la consulta (error permanente): se olvida el id."),
+    ErrorTemporal("Fallo temporal del servidor: se conserva el id y se sigue el pedido."),
+    SinConexion("Sin conexión con el servidor: se conserva el id y se sigue el pedido."),
+    RespuestaIlegible("Respuesta ilegible del servidor: se conserva el id y se sigue el pedido."),
+    SinServidor("No hay servidor configurado: se conserva el id."),
+}
+
+/**
+ * Resultado detallado de la comprobación al arrancar.
+ *
+ * @property pedidoId id del pedido guardado que se consultó, o null si no había.
+ * @property detalle datos útiles sin información personal (estado y pago del pedido,
+ * o el código HTTP del error).
+ * @property idOlvidado true si la comprobación ha borrado el id guardado.
+ */
+data class InformeArranque(
+    val decision: DecisionArranque,
+    val causa: CausaArranque,
+    val pedidoId: Int?,
+    val detalle: String?,
+    val idOlvidado: Boolean,
+) {
+    /** Texto en español para el diagnóstico, por ejemplo "Pedido n.º 104: El pedido sigue vivo… (estado pendiente, pago pagado)". */
+    val resumen: String
+        get() = buildString {
+            if (pedidoId != null) append("Pedido n.º $pedidoId: ")
+            append(causa.etiqueta)
+            if (detalle != null) append(" ($detalle)")
+        }
+}
+
+/** Igual que [decidirArranque], pero devuelve también la causa y si se olvidó el id. */
+suspend fun evaluarArranque(
+    almacen: PedidoEnCurso,
+    repositorio: RepositorioPedidos,
+): InformeArranque {
+    val id = almacen.obtenerId()
+        ?: return InformeArranque(DecisionArranque.ArranqueNormal, CausaArranque.SinPedidoGuardado, null, null, false)
+
+    fun conservar(causa: CausaArranque, detalle: String? = null) =
+        InformeArranque(DecisionArranque.SeguirPedido(id, pedido = null), causa, id, detalle, idOlvidado = false)
+
+    fun olvidar(causa: CausaArranque, detalle: String? = null): InformeArranque {
+        almacen.olvidar()
+        return InformeArranque(DecisionArranque.ArranqueNormal, causa, id, detalle, idOlvidado = true)
+    }
 
     val pedido = try {
         repositorio.obtenerPedido(id)
     } catch (e: CancellationException) {
         throw e
     } catch (e: ErrorRed.SinServidorConfigurado) {
-        return DecisionArranque.ArranqueNormal
+        return InformeArranque(DecisionArranque.ArranqueNormal, CausaArranque.SinServidor, id, null, false)
     } catch (e: ErrorRed.Servidor) {
-        if (esErrorPermanente(e.codigo)) {
-            almacen.olvidar()
-            return DecisionArranque.ArranqueNormal
+        val detalle = "código ${e.codigo}"
+        return when {
+            e.codigo == 404 -> olvidar(CausaArranque.PedidoNoExiste)
+            esErrorPermanente(e.codigo) -> olvidar(CausaArranque.ErrorPermanente, detalle)
+            else -> conservar(CausaArranque.ErrorTemporal, detalle)
         }
-        return DecisionArranque.SeguirPedido(id, pedido = null)
+    } catch (e: ErrorRed.SinConexion) {
+        return conservar(CausaArranque.SinConexion)
+    } catch (e: ErrorRed.RespuestaInvalida) {
+        return conservar(CausaArranque.RespuestaIlegible)
     } catch (e: Exception) {
-        // Sin conexión, respuesta ilegible o cualquier imprevisto: no se pierde el pedido.
-        return DecisionArranque.SeguirPedido(id, pedido = null)
+        // Cualquier imprevisto: no se pierde el pedido.
+        return conservar(CausaArranque.RespuestaIlegible, "error inesperado")
     }
 
+    val detalle = "estado ${pedido.estado}, pago ${pedido.estadoPago ?: "desconocido"}"
     if (pedido.seguimientoTerminado) {
-        almacen.olvidar()
-        return DecisionArranque.ArranqueNormal
+        return olvidar(CausaArranque.PedidoTerminado, detalle)
     }
-    return DecisionArranque.SeguirPedido(id, pedido)
+    return InformeArranque(DecisionArranque.SeguirPedido(id, pedido), CausaArranque.PedidoVivo, id, detalle, false)
 }
 
 /** Un 4xx es permanente (no existe, id no válido...), salvo 408 y 429, que se pueden reintentar. */

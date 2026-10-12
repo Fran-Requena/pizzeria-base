@@ -17,8 +17,10 @@ import es.fpmola.pizzeria.carrito.ResultadoAnadir
 import es.fpmola.pizzeria.di.Dependencias
 import es.fpmola.pizzeria.pedidos.DecisionArranque
 import es.fpmola.pizzeria.pedidos.Pedido
+import es.fpmola.pizzeria.diagnostico.CategoriaDiagnostico
+import es.fpmola.pizzeria.diagnostico.construirDiagnostico
 import es.fpmola.pizzeria.pedidos.debeComprobarPedidoGuardado
-import es.fpmola.pizzeria.pedidos.decidirArranque
+import es.fpmola.pizzeria.pedidos.evaluarArranque
 import es.fpmola.pizzeria.pedidos.seguimientoTerminado
 import es.fpmola.pizzeria.ui.AvisoDemo
 import es.fpmola.pizzeria.ui.carrito.PantallaCarrito
@@ -27,6 +29,7 @@ import es.fpmola.pizzeria.ui.catalogo.PantallaCatalogo
 import es.fpmola.pizzeria.ui.catalogo.PantallaDetalle
 import es.fpmola.pizzeria.ui.configuracion.ConfiguracionViewModel
 import es.fpmola.pizzeria.ui.configuracion.PantallaConfiguracion
+import es.fpmola.pizzeria.ui.diagnostico.PantallaDiagnostico
 import es.fpmola.pizzeria.ui.inicio.InicioViewModel
 import es.fpmola.pizzeria.ui.inicio.PantallaInicio
 import es.fpmola.pizzeria.ui.pedidos.DatosPedidoViewModel
@@ -39,7 +42,7 @@ import es.fpmola.pizzeria.ui.tema.TemaPizzeria
 import kotlinx.coroutines.launch
 
 /** Pantallas de la app. La navegación es un simple estado, sin librería. */
-private enum class Pantalla { Configuracion, Inicio, Catalogo, Detalle, Carrito, Datos, Confirmado }
+private enum class Pantalla { Configuracion, Diagnostico, Inicio, Catalogo, Detalle, Carrito, Datos, Confirmado }
 
 /**
  * true cuando este proceso ya ha comprobado el pedido guardado. Por sí sola NO basta
@@ -96,10 +99,13 @@ fun App(
         var enviandoPedido by remember { mutableStateOf(false) }
         val carrito = remember { Dependencias.carrito() }
         val pedidoEnCurso = remember { Dependencias.pedidoEnCurso() }
+        val registro = remember { Dependencias.registroDiagnostico() }
         // Se guarda con el estado de la actividad: vale true tras girar la pantalla y
         // vuelve a false cuando la actividad empieza de cero (por ejemplo, tras quitar
         // la app de "recientes", aunque el proceso siga vivo).
         var arranqueResuelto by rememberSaveable { mutableStateOf(false) }
+        // true si esta composición es un arranque de la app y no un giro de pantalla.
+        val esArranque = remember { !(arranqueResuelto && pedidoGuardadoComprobado) }
         // Cambia al pulsar "Reintentar" en el inicio.
         var intentoInicio by rememberSaveable { mutableStateOf(0) }
         // true mientras se comprueba en el servidor el pedido guardado al arrancar.
@@ -114,13 +120,28 @@ fun App(
         }
 
         LaunchedEffect(Unit) {
-            if (comprobandoPedido) {
-                val decision = decidirArranque(pedidoEnCurso, Dependencias.repositorioPedidos())
+            if (esArranque) {
+                registro.anotar(
+                    CategoriaDiagnostico.NAVEGACION,
+                    "Arranque de la app en la pantalla ${pantalla.name}; pedido guardado: " +
+                        (pedidoEnCurso.obtenerId()?.let { "n.º $it" } ?: "ninguno") + ".",
+                )
+                // Sin pedido guardado esta llamada responde al instante, sin red.
+                val informe = evaluarArranque(pedidoEnCurso, Dependencias.repositorioPedidos())
+                registro.anotar(
+                    CategoriaDiagnostico.ARRANQUE,
+                    informe.resumen + if (informe.idOlvidado) " Id olvidado." else "",
+                )
+                val decision = informe.decision
                 if (decision is DecisionArranque.SeguirPedido) {
                     pedidoConfirmado = decision.pedido
                     avisoPagoInicial = null
                     pedidoConfirmadoId = decision.pedidoId
                     pantalla = Pantalla.Confirmado
+                    registro.anotar(
+                        CategoriaDiagnostico.NAVEGACION,
+                        "Se abre el seguimiento del pedido n.º ${decision.pedidoId}.",
+                    )
                 }
             }
             pedidoGuardadoComprobado = true
@@ -128,10 +149,13 @@ fun App(
             comprobandoPedido = false
         }
 
+        // Sin servidor no se puede salir de la configuración: no hay adónde volver.
+        val hayServidor = Dependencias.ajustes().obtenerUrlBase() != null
         manejadorAtras(
-            pantalla != Pantalla.Configuracion && pantalla != Pantalla.Inicio,
+            pantalla != Pantalla.Inicio && !(pantalla == Pantalla.Configuracion && !hayServidor),
         ) {
             pantalla = when (pantalla) {
+                Pantalla.Diagnostico -> Pantalla.Configuracion
                 Pantalla.Detalle -> Pantalla.Catalogo
                 Pantalla.Carrito -> origenCarrito
                 // Mientras se envía el pedido, atrás no hace nada.
@@ -165,11 +189,42 @@ fun App(
                                 // El pedido guardado es de otro servidor: aquí no existe o es otro.
                                 if (urlAnterior != Dependencias.ajustes().obtenerUrlBase()) {
                                     pedidoEnCurso.olvidar()
+                                    registro.anotar(
+                                        CategoriaDiagnostico.PEDIDO,
+                                        "Id olvidado: se guardó otro servidor.",
+                                    )
                                 }
                                 versionServidor++
                                 pantalla = Pantalla.Inicio
                             }
                         },
+                        alAbrirDiagnostico = { pantalla = Pantalla.Diagnostico },
+                        alVolver = if (hayServidor) {
+                            { pantalla = Pantalla.Inicio }
+                        } else {
+                            null
+                        },
+                        modifier = modificador,
+                    )
+                }
+                Pantalla.Diagnostico -> {
+                    var instantanea by remember { mutableStateOf(0) }
+                    val diagnostico = remember(instantanea) {
+                        construirDiagnostico(
+                            info = Dependencias.infoCompilacion(),
+                            ajustes = Dependencias.ajustes(),
+                            pedidoEnCurso = pedidoEnCurso,
+                            registro = registro,
+                        )
+                    }
+                    PantallaDiagnostico(
+                        diagnostico = diagnostico,
+                        alActualizar = { instantanea++ },
+                        alBorrarHistorial = {
+                            registro.borrar()
+                            instantanea++
+                        },
+                        alVolver = { pantalla = Pantalla.Configuracion },
                         modifier = modificador,
                     )
                 }
@@ -266,6 +321,7 @@ fun App(
                             repositorioPagos = Dependencias.repositorioPagos(),
                             abridor = Dependencias.abridorUrl(),
                             pedidoEnCurso = Dependencias.pedidoEnCurso(),
+                            registro = Dependencias.registroDiagnostico(),
                         )
                     }
                     val estadoDatos = modelo.estado
@@ -278,6 +334,10 @@ fun App(
                     LaunchedEffect(estadoDatos.pedidoCreado) {
                         val creado = estadoDatos.pedidoCreado
                         if (creado != null) {
+                            registro.anotar(
+                                CategoriaDiagnostico.NAVEGACION,
+                                "Pedido n.º ${creado.id} creado: se abre su seguimiento.",
+                            )
                             pedidoConfirmado = creado
                             avisoPagoInicial = estadoDatos.avisoPago
                             pedidoConfirmadoId = creado.id
@@ -289,6 +349,7 @@ fun App(
                     // enviando: el carrito se vacía al crearse el pedido, antes del pago).
                     LaunchedEffect(carrito.estaVacio, estadoDatos.enviando, estadoDatos.pedidoCreado) {
                         if (debeVolverAlCarritoVacio(carrito.estaVacio, estadoDatos)) {
+                            registro.anotar(CategoriaDiagnostico.NAVEGACION, "Carrito vacío sin pedido: se vuelve al carrito.")
                             pantalla = Pantalla.Carrito
                         }
                     }
@@ -341,7 +402,10 @@ fun App(
                         // Un pedido terminado ya no se retoma al arrancar.
                         val terminado = modelo.estado.pedido?.seguimientoTerminado == true
                         LaunchedEffect(terminado, id) {
-                            if (terminado && pedidoEnCurso.obtenerId() == id) pedidoEnCurso.olvidar()
+                            if (terminado && pedidoEnCurso.obtenerId() == id) {
+                                pedidoEnCurso.olvidar()
+                                registro.anotar(CategoriaDiagnostico.PEDIDO, "Id olvidado: el pedido n.º $id ha terminado.")
+                            }
                         }
                         // Bucle cancelable: se detiene al salir de la pantalla o
                         // cuando el estado del pedido es final.
@@ -357,6 +421,7 @@ fun App(
                             alVolverAlInicio = { pantalla = Pantalla.Inicio },
                             alDejarDeSeguir = {
                                 pedidoEnCurso.olvidar()
+                                registro.anotar(CategoriaDiagnostico.PEDIDO, "Id olvidado: el usuario dejó de seguir el pedido n.º $id.")
                                 pedidoConfirmadoId = null
                                 pedidoConfirmado = null
                                 pantalla = Pantalla.Inicio

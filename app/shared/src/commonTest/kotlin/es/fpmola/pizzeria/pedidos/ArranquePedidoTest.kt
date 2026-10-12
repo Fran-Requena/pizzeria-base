@@ -214,6 +214,68 @@ class ArranquePedidoTest {
         assertEquals(104, escenario.almacen.obtenerId())
     }
 
+    // --- Informe detallado (para el diagnóstico) -------------------------------
+
+    @Test
+    fun elInformeExplicaCadaCausaYSiSeOlvidoElId() = runTest {
+        data class Caso(
+            val motor: MockEngine,
+            val causa: CausaArranque,
+            val olvidado: Boolean,
+            val detalle: String?,
+            val urlServidor: String? = "https://servidor.prueba",
+            val idGuardado: Int? = 104,
+        )
+
+        val casos = listOf(
+            Caso(servidorDevuelve(jsonPedido("pendiente", "pagado", "stripe")), CausaArranque.PedidoVivo, false, "estado pendiente, pago pagado"),
+            Caso(servidorDevuelve(jsonPedido("entregado")), CausaArranque.PedidoTerminado, true, "estado entregado, pago pendiente"),
+            Caso(servidorDevuelve("{}", HttpStatusCode.NotFound), CausaArranque.PedidoNoExiste, true, null),
+            Caso(servidorDevuelve("{}", HttpStatusCode.BadRequest), CausaArranque.ErrorPermanente, true, "código 400"),
+            Caso(servidorDevuelve("{}", HttpStatusCode.BadGateway), CausaArranque.ErrorTemporal, false, "código 502"),
+            Caso(MockEngine { throw RuntimeException("sin cobertura") }, CausaArranque.SinConexion, false, null),
+            Caso(servidorDevuelve("<html>"), CausaArranque.RespuestaIlegible, false, null),
+            Caso(servidorDevuelve("{}"), CausaArranque.SinServidor, false, null, urlServidor = null),
+            Caso(servidorDevuelve("{}"), CausaArranque.SinPedidoGuardado, false, null, idGuardado = null),
+        )
+        for (caso in casos) {
+            val escenario = Escenario(caso.motor, caso.idGuardado, caso.urlServidor)
+
+            val informe = evaluarArranque(escenario.almacen, escenario.repositorio)
+
+            assertEquals(caso.causa, informe.causa, "${caso.causa}")
+            assertEquals(caso.olvidado, informe.idOlvidado, "${caso.causa}")
+            assertEquals(caso.detalle, informe.detalle, "${caso.causa}")
+            assertEquals(caso.idGuardado, informe.pedidoId, "${caso.causa}")
+            assertEquals(caso.olvidado, escenario.almacen.obtenerId() == null && caso.idGuardado != null, "${caso.causa}")
+        }
+    }
+
+    @Test
+    fun elResumenEsUnaFraseEnEspanolSinDatosPersonales() = runTest {
+        val escenario = Escenario(servidorDevuelve(jsonPedido("pendiente", "pagado", "stripe")))
+
+        val informe = evaluarArranque(escenario.almacen, escenario.repositorio)
+
+        assertEquals(
+            "Pedido n.º 104: El pedido sigue vivo: se abre su seguimiento. (estado pendiente, pago pagado)",
+            informe.resumen,
+        )
+        // El pedido de prueba lleva nombre, teléfono y dirección: no deben salir.
+        assertFalse(informe.resumen.contains("Ana"))
+        assertFalse(informe.resumen.contains("600123456"))
+        assertFalse(informe.resumen.contains("Calle Mayor"))
+    }
+
+    @Test
+    fun sinPedidoGuardadoElResumenNoCitaNingunPedido() = runTest {
+        val escenario = Escenario(servidorDevuelve("{}"), idGuardado = null)
+
+        val informe = evaluarArranque(escenario.almacen, escenario.repositorio)
+
+        assertEquals("No había ningún pedido guardado.", informe.resumen)
+    }
+
     // --- Cuándo se comprueba el pedido guardado ------------------------------
 
     @Test
