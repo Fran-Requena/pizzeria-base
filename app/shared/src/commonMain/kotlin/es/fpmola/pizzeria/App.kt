@@ -31,6 +31,7 @@ import es.fpmola.pizzeria.ui.inicio.InicioViewModel
 import es.fpmola.pizzeria.ui.inicio.PantallaInicio
 import es.fpmola.pizzeria.ui.pedidos.DatosPedidoViewModel
 import es.fpmola.pizzeria.ui.pedidos.PantallaBuscandoPedido
+import es.fpmola.pizzeria.ui.pedidos.debeVolverAlCarritoVacio
 import es.fpmola.pizzeria.ui.pedidos.PantallaDatosPedido
 import es.fpmola.pizzeria.ui.pedidos.PantallaPedidoConfirmado
 import es.fpmola.pizzeria.ui.pedidos.PedidoConfirmadoViewModel
@@ -284,9 +285,10 @@ fun App(
                             pantalla = Pantalla.Confirmado
                         }
                     }
-                    // Sin nada en el carrito no hay pedido que enviar.
-                    LaunchedEffect(carrito.estaVacio, estadoDatos.pedidoCreado) {
-                        if (carrito.estaVacio && estadoDatos.pedidoCreado == null) {
+                    // Sin nada en el carrito no hay pedido que enviar (salvo que se esté
+                    // enviando: el carrito se vacía al crearse el pedido, antes del pago).
+                    LaunchedEffect(carrito.estaVacio, estadoDatos.enviando, estadoDatos.pedidoCreado) {
+                        if (debeVolverAlCarritoVacio(carrito.estaVacio, estadoDatos)) {
                             pantalla = Pantalla.Carrito
                         }
                     }

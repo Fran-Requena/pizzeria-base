@@ -410,6 +410,50 @@ class DatosPedidoViewModelTest {
     }
 
     @Test
+    fun conTarjetaElCarritoVacioNoSacaDeLaPantallaDeDatosMientrasSeInicieElPago() = runTest {
+        // El carrito se vacía al crearse el pedido, pero la sesión de pago aún se está
+        // creando: en ese momento no se debe volver al carrito (fallo observado).
+        val sesionPedida = CompletableDeferred<Unit>()
+        val sesionLiberada = CompletableDeferred<Unit>()
+        val motor = MockEngine { solicitud ->
+            when (solicitud.url.encodedPath) {
+                "/api/pedidos" -> responderJson(JSON_PEDIDO_CREADO_TARJETA, HttpStatusCode.Created)
+                else -> {
+                    sesionPedida.complete(Unit)
+                    sesionLiberada.await()
+                    responderJson(JSON_SESION_PAGO)
+                }
+            }
+        }
+        val carrito = carritoConDosPizzas()
+        val modelo = crearViewModel(motor, carrito)
+        modelo.rellenarDomicilio()
+        modelo.cambiarPagoConTarjeta(true)
+
+        val envio = launch { modelo.enviarPedido() }
+        sesionPedida.await()
+
+        // A mitad del pago: carrito vacío, pedido aún sin publicar, envío en marcha.
+        assertTrue(carrito.estaVacio)
+        assertNull(modelo.estado.pedidoCreado)
+        assertTrue(modelo.estado.enviando)
+        assertFalse(debeVolverAlCarritoVacio(carrito.estaVacio, modelo.estado))
+
+        sesionLiberada.complete(Unit)
+        envio.join()
+
+        // Al terminar el pedido está creado y tampoco se vuelve al carrito.
+        assertEquals(104, modelo.estado.pedidoCreado?.id)
+        assertFalse(debeVolverAlCarritoVacio(carrito.estaVacio, modelo.estado))
+    }
+
+    @Test
+    fun conElCarritoVacioSinEnviarNiPedidoSiSeVuelveAlCarrito() {
+        assertTrue(debeVolverAlCarritoVacio(true, EstadoDatosPedido()))
+        assertFalse(debeVolverAlCarritoVacio(false, EstadoDatosPedido()))
+    }
+
+    @Test
     fun sinTarjetaNoSePideNingunaSesionDePago() = runTest {
         val servidor = ServidorConTarjeta { responderJson(JSON_SESION_PAGO) }
         val abridor = AbridorFalso()
