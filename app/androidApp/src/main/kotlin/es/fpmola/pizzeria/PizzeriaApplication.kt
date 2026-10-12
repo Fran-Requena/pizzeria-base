@@ -9,6 +9,7 @@ import es.fpmola.pizzeria.di.iniciarKoin
 class PizzeriaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        iniciarKoin(this)
+        // BuildConfig.URL_SERVIDOR lleva la URL fijada al compilar (vacía en el APK genérico).
+        iniciarKoin(this, BuildConfig.URL_SERVIDOR)
     }
 }

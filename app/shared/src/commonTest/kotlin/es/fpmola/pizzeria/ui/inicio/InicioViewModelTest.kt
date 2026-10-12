@@ -1,5 +1,6 @@
 package es.fpmola.pizzeria.ui.inicio
 
+import es.fpmola.pizzeria.ajustes.AjustesConUrlDeCompilacion
 import es.fpmola.pizzeria.prueba.AjustesEnMemoria
 import es.fpmola.pizzeria.prueba.URL_PRUEBA
 import es.fpmola.pizzeria.prueba.crearClientePrueba
@@ -9,6 +10,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.http.HttpStatusCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -97,6 +99,29 @@ class InicioViewModelTest {
 
         assertEquals(ConexionServidor.Correcta, modelo.estado.conexion)
         assertEquals(2, peticiones)
+    }
+
+    @Test
+    fun conUnServidorFijadoEnLaCompilacionElEstadoLoIndica() = runTest {
+        val ajustes = AjustesConUrlDeCompilacion(AjustesEnMemoria(url = null), "https://dam-01.guillermofoix.org")
+        val modelo = InicioViewModel(
+            ajustes,
+            RepositorioSalud(crearClientePrueba(ajustes, MockEngine { responderJson(saludCorrecta) })),
+        )
+
+        assertEquals("https://dam-01.guillermofoix.org", modelo.estado.urlServidor)
+        assertTrue(modelo.estado.servidorFijadoEnCompilacion)
+
+        modelo.comprobar()
+
+        assertEquals(ConexionServidor.Correcta, modelo.estado.conexion)
+    }
+
+    @Test
+    fun unApkGenericoNoFijaElServidor() {
+        val modelo = crearViewModel(MockEngine { responderJson(saludCorrecta) })
+
+        assertFalse(modelo.estado.servidorFijadoEnCompilacion)
     }
 
     @Test

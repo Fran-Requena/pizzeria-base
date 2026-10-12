@@ -62,8 +62,15 @@ fun PantallaInicio(
         ) {
             Text("🍕 Ver la carta")
         }
-        BotonTexto(onClick = alCambiarServidor) {
-            Text("Cambiar servidor")
+        if (estado.servidorFijadoEnCompilacion) {
+            // El APK trae su servidor: el cambio queda como un ajuste discreto, no como una acción del flujo.
+            BotonTexto(onClick = alCambiarServidor) {
+                Text(text = "Ajustes del servidor", style = MaterialTheme.typography.labelSmall)
+            }
+        } else {
+            BotonTexto(onClick = alCambiarServidor) {
+                Text("Cambiar servidor")
+            }
         }
     }
 }

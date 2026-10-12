@@ -10,6 +10,19 @@ kotlin {
         jvmTarget = JvmTarget.JVM_11
     }
 }
+
+// URL del servidor fijada al compilar. Viene de la variable de entorno URL_SERVIDOR (en el
+// CI, la variable de repositorio del mismo nombre; ver app/README.md). Vacía o ausente:
+// APK genérico, que pide el servidor en la configuración.
+val urlServidor: String = providers.environmentVariable("URL_SERVIDOR").orElse("").get().trim()
+if (urlServidor.isNotEmpty() &&
+    (!urlServidor.startsWith("https://") || urlServidor.any { it.isWhitespace() || it == '"' || it == '\\' })
+) {
+    throw GradleException(
+        "URL_SERVIDOR no es válida: debe empezar por https:// y no llevar espacios ni comillas " +
+            "(valor recibido: $urlServidor)."
+    )
+}
 dependencies {
     implementation(project(":shared"))
 
@@ -29,6 +42,7 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "URL_SERVIDOR", "\"$urlServidor\"")
     }
     packaging {
         resources {
@@ -50,5 +64,6 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }

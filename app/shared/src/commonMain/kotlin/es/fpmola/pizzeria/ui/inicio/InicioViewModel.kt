@@ -25,9 +25,12 @@ sealed interface ConexionServidor {
  * Estado del inicio.
  *
  * @property urlServidor servidor al que apunta la app, o null si no hay ninguno.
+ * @property servidorFijadoEnCompilacion true si el APK trae el servidor fijado al
+ * compilar: entonces cambiarlo no es parte del flujo normal.
  */
 data class EstadoInicio(
     val urlServidor: String?,
+    val servidorFijadoEnCompilacion: Boolean = false,
     val conexion: ConexionServidor = ConexionServidor.Comprobando,
 )
 
@@ -41,12 +44,17 @@ class InicioViewModel(
     private val repositorioSalud: RepositorioSalud,
 ) : ViewModel() {
 
-    var estado by mutableStateOf(EstadoInicio(urlServidor = ajustes.obtenerUrlBase()))
+    var estado by mutableStateOf(estadoInicial())
         private set
+
+    private fun estadoInicial() = EstadoInicio(
+        urlServidor = ajustes.obtenerUrlBase(),
+        servidorFijadoEnCompilacion = ajustes.obtenerUrlDeCompilacion() != null,
+    )
 
     /** Comprueba la conexión con el servidor actual y actualiza el estado. */
     suspend fun comprobar() {
-        estado = EstadoInicio(urlServidor = ajustes.obtenerUrlBase(), conexion = ConexionServidor.Comprobando)
+        estado = estadoInicial()
         val conexion = when (val resultado = repositorioSalud.comprobar()) {
             is ResultadoSalud.Correcta -> ConexionServidor.Correcta
             is ResultadoSalud.Fallida -> ConexionServidor.Fallida(resultado.mensaje)

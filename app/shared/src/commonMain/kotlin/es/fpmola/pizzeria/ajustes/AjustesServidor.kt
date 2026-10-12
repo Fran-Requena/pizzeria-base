@@ -13,4 +13,10 @@ interface AjustesServidor {
 
     /** Guarda la URL base, ya validada y sin barra final. */
     fun guardarUrlBase(url: String)
+
+    /**
+     * URL del servidor fijada al compilar el APK, o null si el APK es genérico.
+     * Ver [AjustesConUrlDeCompilacion].
+     */
+    fun obtenerUrlDeCompilacion(): String? = null
 }
