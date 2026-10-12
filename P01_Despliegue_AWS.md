@@ -64,7 +64,7 @@ _(Nota de seguridad perimetral: Gracias a la arquitectura de proxy inverso unifi
 1. En el panel izquierdo, acceder a **Instancias** y pulsar **Lanzar instancias**.
 2. Configurar los siguientes parámetros:
    - **Nombre:** `Pizzeria-TuNombre`
-   - **Imágenes de SO (AMI):** Seleccionar **Ubuntu** (Ubuntu Server 24.04 o 22.04 LTS, 64-bit x86).  
+   - **Imágenes de SO (AMI):** Seleccionar **Ubuntu** (**Ubuntu Server 24.04 LTS**, 64-bit x86).  
      > **Aviso de cambio de AMI:** Al cambiar de la opción por defecto (Amazon Linux) a Ubuntu, AWS mostrará una ventana emergente avisando de que se restablecerán configuraciones previas a sus valores por defecto. Es un aviso totalmente normal: pulse **Confirmar / Continuar** para seguir.
    - **Tipo de instancia:** Seleccionar **`t3.small`** _(la opción 'micro' carece de los recursos necesarios para orquestar los contenedores)._
    - **Par de claves:** Seleccionar la clave predeterminada (`vockey`).
@@ -123,7 +123,20 @@ Generar el archivo `.env` a partir de la plantilla preconfigurada para producci�
 cp .env.example .env
 ```
 
-_(Nota: La plantilla ya viene preconfigurada con el puerto estándar `HTTP_PORT=80` y las credenciales seguras)._
+Abre el archivo con `nano .env` y completa **`DB_PASSWORD=`** con una clave que elijas tú (sin `$`, `#`, comillas ni espacios). **No hay clave por defecto**: si la dejas vacía, Docker se niega a arrancar con el mensaje *«Define DB_PASSWORD en el archivo .env»*.
+
+_(Nota: La plantilla ya viene preconfigurada con el puerto estándar `HTTP_PORT=80`)._
+
+### Clave de acceso a DbGate (`.htpasswd`)
+
+El panel `/dbgate/` está protegido con usuario y contraseña por Nginx. El profesor te entrega en Aules la **clave de administración**; crea el archivo con ella **antes** de arrancar los contenedores (si no existe, Docker crea una carpeta con ese nombre y `/dbgate/` dará error 500):
+
+```bash
+read -r -s -p "Clave de administración de DbGate: " CLAVE_ADMIN; echo
+printf 'admin:%s\n' "$(printf '%s' "$CLAVE_ADMIN" | openssl passwd -apr1 -stdin)" > .htpasswd
+unset CLAVE_ADMIN
+chmod 644 .htpasswd
+```
 
 ---
 
@@ -158,13 +171,13 @@ Comprobar el funcionamiento desde un navegador web mediante las siguientes direc
 | **Portal Web & Cocina KDS**           | `http://<IP_PUBLICA>`            | Interfaz comercial interactiva y panel de pedidos de cocina.              |
 | **Diagnóstico de la API**             | `http://<IP_PUBLICA>/api/health` | Respuesta JSON: `{"status":"UP","database":{"connected":true}}`.          |
 | **WebApp Móvil Clientes**             | `http://<IP_PUBLICA>/app/`       | Aplicación PWA para clientes y lectura de mesas QR.                       |
-| **Gestión de Base de Datos (DbGate)** | `http://<IP_PUBLICA>/dbgate/`    | Gestor visual DbGate con la base de datos `pizzeria_db` ya autoconectada. |
+| **Gestión de Base de Datos (DbGate)** | `http://<IP_PUBLICA>/dbgate/`    | Pide usuario `admin` y la clave de administración; después, DbGate con la base de datos `pizzeria_db` ya autoconectada. |
 
 ---
 
 ## FASE 6: Procedimiento de Cierre y Ahorro de Créditos
 
-El entorno de AWS Academy Learner Lab cuenta con un temporizador de sesión de **4 horas**: si no haces nada, al cumplirse ese tiempo el laboratorio detiene automáticamente las instancias para proteger tu saldo de 100$.
+El entorno de AWS Academy Learner Lab cuenta con un temporizador de sesión de **4 horas**: si no haces nada, al cumplirse ese tiempo el laboratorio detiene automáticamente las instancias para proteger tu saldo. El presupuesto y las rutinas de parada y arranque están en la [Ficha de continuidad](FICHA_CONTINUIDAD.md).
 
 Sin embargo, para ahorrar créditos de forma proactiva al terminar la clase o tu sesión de estudio, es recomendable detener los servicios nosotros mismos con los siguientes pasos:
 

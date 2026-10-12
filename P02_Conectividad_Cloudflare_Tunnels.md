@@ -61,9 +61,14 @@ cd ~/pizzeria-base
 ```
 
 ### 2. Actualizar el repositorio con los últimos cambios
-Descarga las últimas mejoras de la arquitectura desde GitHub:
+Las actualizaciones **no se traen con `git pull`** (en tu fork no llegarían los cambios del profesor y chocaría con lo que hayas tocado). Se vuelve a clonar el proyecto y se copian tus claves:
 ```bash
-git pull origin main
+cd ~
+mv pizzeria-base pizzeria-base.anterior
+git clone https://github.com/guillermofoix/pizzeria-base.git
+cp pizzeria-base.anterior/.env pizzeria-base/.env
+cp pizzeria-base.anterior/.htpasswd pizzeria-base/.htpasswd
+cd pizzeria-base
 ```
 
 ### 3. Configurar el Token en el archivo de entorno `.env`

@@ -16,8 +16,8 @@
 
 En la Práctica 2 y 3 logramos que nuestra aplicación fuera accesible a través de Internet con HTTPS mediante Cloudflare Tunnels. Sin embargo, si analizamos la arquitectura con ojos de auditor de seguridad, descubrimos **dos vulnerabilidades críticas**:
 
-1. **Superficie de ataque residual en AWS:** En el Grupo de Seguridad de AWS dejamos abiertos los puertos **80 (HTTP)** y **443 (HTTPS)** a todo el mundo (`0.0.0.0/0`). Cualquier escáner automatizado (como Shodan o Censys) puede localizar la IP pública de nuestra máquina y atacarla directamente.
-2. **Exposición pública del panel de administración (`/dbgate/`):** Cualquier usuario anónimo que conozca la URL pública puede acceder directamente a la base de datos PostgreSQL, ejecutar consultas SQL y alterar o eliminar registros sin que se le solicite ninguna credencial.
+1. **Superficie de ataque residual en AWS:** En el Grupo de Seguridad de AWS dejamos abierto el puerto **80 (HTTP)** a todo el mundo (`0.0.0.0/0`). Cualquier escáner automatizado (como Shodan o Censys) puede localizar la IP pública de nuestra máquina y atacarla directamente.
+2. **Exposición pública del panel de administración (`/dbgate/`):** sin protección, cualquier usuario anónimo que conozca la URL pública podría acceder directamente a la base de datos PostgreSQL, ejecutar consultas SQL y alterar o eliminar registros sin que se le solicite ninguna credencial. **El proyecto ya incluye esa protección** (autenticación básica en Nginx): en esta práctica estudiarás cómo funciona y la verificarás.
 
 ### El Modelo de Seguridad en 3 Capas Concéntricas
 
@@ -29,7 +29,7 @@ graph TD
     LegitUser[Administrador / Docente]
 
     subgraph CAPA1 ["CAPA 1: Perimetral (El Cerrojazo en AWS EC2)"]
-        SG["Security Group de AWS<br/>Puertos 80 y 443 ELIMINADOS<br/>Solo Puerto 22 SSH"]
+        SG["Security Group de AWS<br/>Puerto 80 ELIMINADO<br/>Solo Puerto 22 SSH"]
     end
 
     subgraph CAPA2 ["CAPA 2: Acceso e Identidad (HTTP Basic Auth en Nginx)"]
@@ -41,7 +41,7 @@ graph TD
         Postgres["PostgreSQL 16 (pizzeria-network)"]
     end
 
-    Attacker -->|Ataque directo por IP :80/:443| SG
+    Attacker -->|Ataque directo por IP :80| SG
     SG -->|BLOQUEO TOTAL / Timeout| Attacker
 
     LegitUser -->|Túnel Cifrado Cloudflare| Auth
@@ -63,7 +63,7 @@ Vamos a demostrarlo empíricamente cerrando el cortafuegos de Amazon:
 2. En el menú izquierdo, ve a **Red y seguridad** $\rightarrow$ **Grupos de seguridad** (*Security Groups*).
 3. Selecciona tu grupo: **`pizzeria-secgroup`**.
 4. Pulsa en la pestaña **Reglas de entrada** (*Inbound rules*) $\rightarrow$ **Editar reglas de entrada**.
-5. **Elimina la regla HTTP (puerto 80)** y, si tuvieras la regla HTTPS (puerto 443), elimínala también.
+5. **Elimina la regla HTTP (puerto 80)** (y cualquier otra que no sea SSH).
 6. **Deja ÚNICAMENTE la regla SSH (puerto 22)** para poder seguir conectándote por terminal.
 7. Pulsa en **Guardar reglas**.
 
@@ -89,27 +89,40 @@ Ahora entra en tu navegador a tu URL pública oficial con Cloudflare:
 
 ## FASE 2: Capa de Control de Acceso (HTTP Basic Auth en Nginx)
 
-Ahora protegeremos el endpoint de administración de base de datos (`/dbgate/`) para que nadie pueda ver el panel sin autenticarse primero con credenciales seguras.
+El endpoint de administración de base de datos (`/dbgate/`) está protegido para que nadie pueda ver el panel sin autenticarse antes.
+**La protección ya viene en el repositorio**: no hay que editar ningún archivo. Estudia qué hace cada pieza:
 
-### 1. Generar el archivo de contraseñas seguras (`.htpasswd`)
-En Linux, el estándar para autenticación web básica es el archivo `.htpasswd` con contraseñas cifradas. 
+1. **`frontend-web/nginx.conf`** exige usuario y contraseña en el bloque de DbGate:
+   ```nginx
+   location ^~ /dbgate/ {
+       auth_basic "Zona restringida - Administracion Pizzeria";
+       auth_basic_user_file /etc/nginx/.htpasswd;
+       proxy_pass http://dbgate:3000;
+       # ... resto de cabeceras del proxy y de WebSockets
+   }
+   ```
+   > Fíjate en `^~`: hace que las rutas `/dbgate/...` (incluidos sus `.js` y `.css`) se envíen siempre a DbGate y no las capture la regla genérica de archivos estáticos.
+2. **`docker-compose.app.yml`** monta el archivo de claves dentro del contenedor de Nginx, solo lectura:
+   ```yaml
+   frontend-web:
+     volumes:
+       - ./.htpasswd:/etc/nginx/.htpasswd:ro
+   ```
+3. **`.htpasswd`** (el archivo con el usuario y el hash de la contraseña) lo crea cada alumno y **no se sube a Git** (está en `.gitignore`).
 
-Sitúate en la raíz del proyecto en tu máquina de AWS:
+### 1. Generar el archivo de contraseñas (`.htpasswd`) ANTES de arrancar
+Si ya lo creaste en la práctica P01 o en la guía de despliegue directo, no tienes que repetirlo. Si no, sitúate en la raíz del proyecto en tu máquina de AWS:
 
 ```bash
 cd ~/pizzeria-base
 ```
 
-Genera el archivo `.htpasswd` definiendo el usuario **`admin`** y una contraseña robusta utilizando la herramienta `openssl` (instalada de serie en Ubuntu):
+El profesor te entrega la **clave de administración** (`<CLAVE_ADMIN>`) en Aules. Genera el archivo con el usuario **`admin`**; la clave se teclea sin mostrarse y no queda en el historial (funciona con caracteres como `!`):
 
 ```bash
-# Sintaxis: echo "usuario:$(openssl passwd -apr1 'TU_PASSWORD_SEGURO')" > .htpasswd
-echo "admin:$(openssl passwd -apr1 'PizzeriaAdmin_2026!')" > .htpasswd
-```
-
-Asigna permisos de lectura para que el contenedor Nginx pueda leerlo:
-
-```bash
+read -r -s -p "Clave de administración de DbGate: " CLAVE_ADMIN; echo
+printf 'admin:%s\n' "$(printf '%s' "$CLAVE_ADMIN" | openssl passwd -apr1 -stdin)" > .htpasswd
+unset CLAVE_ADMIN
 chmod 644 .htpasswd
 ```
 
@@ -117,78 +130,13 @@ chmod 644 .htpasswd
 > **Permisos de lectura en Docker (`chmod 644`):**  
 > El proceso de Nginx dentro del contenedor se ejecuta bajo el usuario no privilegiado `nginx` (UID 101). Si el archivo `.htpasswd` tuviera permisos restrictivos (como `600`), el servidor Nginx no podría leerlo y devolvería un error **`500 Internal Server Error`** al introducir las claves.
 
-*(Puedes comprobar que el archivo se ha creado correctamente y contiene el hash ejecutando `cat .htpasswd`).*
+> [!WARNING]
+> **El archivo debe existir antes del `up`.** Si no existe, Docker crea una **carpeta** llamada `.htpasswd` y `/dbgate/` dará error 500. En ese caso: `docker compose -f docker-compose.app.yml down`, `rm -r .htpasswd` y vuelve a crearlo con los comandos de arriba.
 
----
+*(Puedes comprobar que es un archivo con `ls -l .htpasswd` y que contiene el hash con `cut -c1-14 .htpasswd`, que debe mostrar `admin:$apr1$` y unos caracteres más).*
 
-### 2. Montar el archivo en el contenedor Nginx
-Para que Nginx pueda leer este archivo de claves, debemos montarlo en el servicio `frontend-web`.
-
-Abre el archivo `docker-compose.app.yml` con `nano`:
-
-```bash
-nano docker-compose.app.yml
-```
-
-Localiza la sección del servicio `frontend-web` y añade la directiva `volumes` con el archivo `.htpasswd`:
-
-```yaml
-  # 2. Frontend Web Comercial, Cocina KDS y Proxy Inverso Nginx
-  frontend-web:
-    build:
-      context: ./frontend-web
-      dockerfile: Dockerfile
-    container_name: pizzeria-prod-web
-    restart: unless-stopped
-    ports:
-      - "${HTTP_PORT:-80}:80"
-    volumes:
-      - ./.htpasswd:/etc/nginx/.htpasswd:ro
-    depends_on:
-      - backend
-    networks:
-      - pizzeria-network
-```
-
-*(Guarda con `Ctrl+O` y sal con `Ctrl+X`).*
-
----
-
-### 3. Configurar la protección en `frontend-web/nginx.conf`
-Abre el archivo de configuración de Nginx:
-
-```bash
-nano frontend-web/nginx.conf
-```
-
-Localiza el bloque de DbGate (`location /dbgate/`) y añade las dos directivas de autenticación (`auth_basic` y `auth_basic_user_file`):
-
-```nginx
-    # 5. Reverse Proxy hacia DbGate (Protegido con Autenticación Básica)
-    location /dbgate/ {
-        auth_basic "Zona Restringida - Administracion Pizzeria";
-        auth_basic_user_file /etc/nginx/.htpasswd;
-
-        proxy_pass http://dbgate:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 86400s;
-    }
-```
-
-*(Guarda los cambios con `Ctrl+O` y sal con `Ctrl+X`).*
-
----
-
-### 4. Aplicar los cambios y recompilar Nginx
-Reconstruye y reinicia el stack de aplicación para cargar la nueva configuración:
+### 2. Aplicar los cambios
+Reconstruye y reinicia Nginx para cargar la configuración y el archivo de claves:
 
 ```bash
 docker compose -f docker-compose.app.yml up -d --build frontend-web
@@ -206,7 +154,7 @@ Abre una ventana en modo incógnito (o refresca con `Ctrl + F5`) y accede a tu s
 
 1. El navegador mostrará inmediatamente una **ventana emergente de inicio de sesión del sistema** solicitando usuario y contraseña:
    * **Nombre de usuario:** `admin`
-   * **Contraseña:** `PizzeriaAdmin_2026!`
+   * **Contraseña:** la clave de administración (`<CLAVE_ADMIN>`) que te dio el profesor
 2. Si introduces una contraseña errónea o cancelas el diálogo, el servidor devolverá un código de error **`401 Authorization Required`**.
 3. Al introducir las credenciales correctas, DbGate cargará con normalidad.
 
@@ -226,7 +174,9 @@ www-authenticate: Basic realm="Zona Restringida - Administracion Pizzeria"
 Ahora comprueba que con credenciales válidas el acceso es concedido:
 
 ```bash
-curl -sI -u admin:PizzeriaAdmin_2026! https://daw-XX.guillermofoix.org/dbgate/ | grep "HTTP"
+read -r -s -p "Clave de administración: " CLAVE_ADMIN; echo
+curl -sI -u "admin:$CLAVE_ADMIN" https://daw-XX.guillermofoix.org/dbgate/ | grep "HTTP"
+unset CLAVE_ADMIN
 ```
 
 **Salida esperada:**
@@ -241,22 +191,23 @@ HTTP/2 200
 
 ---
 
-## FASE 4: Capa de Aplicación: Hardening del Contenedor DbGate
+## FASE 4: Capa de Aplicación: por qué DbGate no necesita login propio
 
-Como última capa de seguridad dentro de la red interna, eliminaremos el parámetro `SKIP_ALL_AUTH=true` en el archivo de base de datos para asegurar que DbGate no omita ninguna comprobación de permisos.
+DbGate se queda con `SKIP_ALL_AUTH=true` en `docker-compose.db.yml`. No es un descuido: DbGate **no es accesible desde fuera**
+(solo se publica con `expose`, dentro de la red `pizzeria-network`), y la única puerta hacia él es `/dbgate/` en Nginx,
+que ya exige usuario y contraseña. Tener dos logins distintos para el mismo panel solo añade confusión.
 
-1. Abre `docker-compose.db.yml`:
-   ```bash
-   nano docker-compose.db.yml
-   ```
-2. En la sección del servicio `dbgate`, cambia `SKIP_ALL_AUTH=true` por:
-   ```yaml
-   - SKIP_ALL_AUTH=false
-   ```
-3. Reinicia el contenedor de DbGate:
-   ```bash
-   docker compose -f docker-compose.db.yml up -d dbgate
-   ```
+Lo que sí debes comprobar es que **DbGate no tiene ningún puerto publicado**:
+
+```bash
+docker ps --format "table {{.Names}}\t{{.Ports}}" | grep dbgate
+```
+
+Debe mostrar solo `3000/tcp`, sin `0.0.0.0:...->3000`. Si ves un puerto publicado, alguien ha añadido un `ports:` y se salta la autenticación de Nginx.
+
+> **Nota sobre las conexiones:** las conexiones a bases de datos definidas por variables de entorno (`CONNECTIONS=...`) bloquean la
+> edición desde la interfaz y no admiten SSL, por eso con AWS RDS (práctica P06) la conexión se inyecta con
+> `bash scripts/dbgate_conexion_rds.sh`.
 
 ---
 
@@ -264,9 +215,9 @@ Como última capa de seguridad dentro de la red interna, eliminaremos el paráme
 
 | Capa | Nivel de Seguridad | Mecanismo Implementado | Amenaza Mitigada |
 | :--- | :--- | :--- | :--- |
-| **Capa 1: Perimetral** | Red AWS EC2 | Eliminación de puertos 80/443 en Security Group. | Ataques DDoS directos, escáneres de puertos por IP (Shodan). |
+| **Capa 1: Perimetral** | Red AWS EC2 | Eliminación del puerto 80 en el Security Group (solo SSH). | Ataques directos por IP y escáneres de puertos (Shodan). |
 | **Capa 2: Identidad** | Servidor Web Nginx | HTTP Basic Auth (`.htpasswd` con hash seguro). | Acceso público no autorizado y bots al panel `/dbgate/`. |
-| **Capa 3: Aplicación** | Datos y DbGate | Aislamiento en `pizzeria-network` y `SKIP_ALL_AUTH=false`. | Consultas SQL maliciosas y modificación accidental de datos. |
+| **Capa 3: Aplicación** | Datos y DbGate | Aislamiento en `pizzeria-network` (DbGate sin puertos publicados). | Acceso a la base de datos sin pasar por Nginx. |
 
 ---
 
