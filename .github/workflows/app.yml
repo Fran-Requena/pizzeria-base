@@ -2,7 +2,8 @@
 # CI DE LA APP ANDROID (carpeta app/)
 # ==============================================================================
 # - compilar:      tests unitarios + APK de depuración (artefacto).
-# - publicar-dev:  en push a main o app-*, publica el APK como Release "dev-latest".
+# - publicar-dev:  en push a main o app-*, o en ejecución manual, publica el APK como
+#                   Release "dev-latest".
 # - firmar:        en etiquetas v*, genera el APK de release firmado y lo publica.
 #
 # Requisitos del proyecto (app/gradle/):
@@ -98,8 +99,9 @@ jobs:
     name: Publicar dev-latest
     needs: compilar
     if: >-
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/app-'))
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/app-')))
     # Fijado a 24.04: ubuntu-latest migra a 26.04 entre el 19-10-2026 y el 19-11-2026. Revisar tras probar con ubuntu-26.04.
     runs-on: ubuntu-24.04
     permissions:
