@@ -16,6 +16,8 @@
 > | :--- | :--- |
 > | Contraseña maestra de RDS y `DB_PASSWORD` | `pizzeria_pass_2026!` |
 > | DbGate (`/dbgate/`, usuario `admin`) | `PizzeriaAdmin_2026!` |
+> | Usuario `pizzeria_app` (mínimo privilegio, P08) | `PizzeriaApp_Secure_2026!` |
+> | Desarrollo local (`docker-compose.yml`, solo PC del aula, nunca en AWS) | `pizzeria_pass_1234` |
 >
 > En producción real se elegirían otras. Si cambias alguna, tú eres responsable de recordarla.
 

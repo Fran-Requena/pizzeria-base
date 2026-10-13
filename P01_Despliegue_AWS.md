@@ -123,7 +123,7 @@ Generar el archivo `.env` a partir de la plantilla preconfigurada para producci�
 cp .env.example .env
 ```
 
-`DB_PASSWORD=` ya viene con la clave de laboratorio **`pizzeria_pass_2026!`** (la misma que usas como contraseña maestra de RDS), así que el `.env` es válido tal cual. Si la borras, Docker se niega a arrancar con el mensaje *«Define DB_PASSWORD en el archivo .env»*.
+`DB_PASSWORD=` ya viene con la clave de laboratorio **`pizzeria_pass_2026!`** (la misma que usas como contraseña maestra de RDS; todas las claves de laboratorio están en la tabla de `GUIA_DESPLIEGUE_DIRECTO.md`), así que el `.env` es válido tal cual. Si la borras, Docker se niega a arrancar con el mensaje *«Define DB_PASSWORD en el archivo .env»*.
 
 > Son **claves de laboratorio, solo para aprendizaje**, iguales para todos (así un fallo nunca se debe a la clave). En producción real se elegirían otras. Si cambias alguna, tú eres responsable de recordarla.
 

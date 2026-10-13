@@ -117,7 +117,7 @@ Si ya lo creaste en la práctica P01 o en la guía de despliegue directo, no tie
 cd ~/pizzeria-base
 ```
 
-Genera el archivo con el usuario **`admin`** y la clave de laboratorio **`PizzeriaAdmin_2026!`** (solo para aprendizaje; en producción real se elegiría otra). Es un script porque el `!` da problemas al pegarlo directamente en la terminal; para otra clave, pásala entre comillas simples: `bash scripts/crear_htpasswd.sh 'OtraClave_1!'`.
+Genera el archivo con el usuario **`admin`** y la clave de laboratorio **`PizzeriaAdmin_2026!`** (ver la tabla de claves de laboratorio de `GUIA_DESPLIEGUE_DIRECTO.md`). Es un script porque el `!` da problemas al pegarlo directamente en la terminal; para otra clave, pásala entre comillas simples: `bash scripts/crear_htpasswd.sh 'OtraClave_1!'`.
 
 ```bash
 bash scripts/crear_htpasswd.sh

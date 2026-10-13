@@ -106,7 +106,7 @@ El backend de Node.js Express se conecta a Amazon RDS utilizando el **Usuario Ma
 
 #### 🟢 La Solución de Hardening
 
-1. Entra en **DbGate** (`https://<TU_SUBDOMINIO>/dbgate/`, con el usuario `admin` y la clave `PizzeriaAdmin_2026!`) y abre la conexión `AWS RDS Bella Napoli`, que usa tu usuario maestro.
+1. Entra en **DbGate** (`https://<TU_SUBDOMINIO>/dbgate/`, con el usuario `admin`; la clave está en la tabla de claves de laboratorio de `GUIA_DESPLIEGUE_DIRECTO.md`: `PizzeriaAdmin_2026!`) y abre la conexión `AWS RDS Bella Napoli`, que usa tu usuario maestro.
 2. Abre una **Nueva Consulta** (*New Query*) contra `pizzeria_db` y ejecuta el siguiente script SQL de blindaje:
 
 ```sql
@@ -115,7 +115,7 @@ El backend de Node.js Express se conecta a Amazon RDS utilizando el **Usuario Ma
 -- ==============================================================================
 
 -- 1. Crear el usuario de aplicación para la API
-CREATE USER pizzeria_app WITH PASSWORD 'pizzeria_pass_2026!';  -- clave de laboratorio (en producción real sería distinta de la maestra)
+CREATE USER pizzeria_app WITH PASSWORD 'PizzeriaApp_Secure_2026!';  -- clave de laboratorio (ver la tabla de GUIA_DESPLIEGUE_DIRECTO.md)
 
 -- 2. Conceder derecho de conexión y uso del esquema
 GRANT CONNECT ON DATABASE pizzeria_db TO pizzeria_app;
@@ -141,7 +141,7 @@ GRANT USAGE, SELECT ON SEQUENCES TO pizzeria_app;
 3. Actualiza el archivo `.env` en tu servidor EC2 para que el backend utilice el nuevo usuario:
    ```ini
    DB_USER=pizzeria_app
-   DB_PASSWORD=pizzeria_pass_2026!
+   DB_PASSWORD=PizzeriaApp_Secure_2026!
    ```
 4. Reinicia el backend:
    ```bash

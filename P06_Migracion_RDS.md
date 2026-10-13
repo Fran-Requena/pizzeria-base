@@ -112,7 +112,7 @@ Nuestra máquina **EC2 actuará como "Bastión"**: como está dentro de la misma
   > Configurar `pizzeria_user` en lugar de `postgres` permite mantener una paridad idéntica con el archivo `.env` del proyecto.
 * **Administración de credenciales:** **Autoadministrado** (*Self managed*).
 * **Generar contraseña automáticamente:** ❌ **Desmarcado**.
-* **Contraseña maestra:** **`pizzeria_pass_2026!`** (clave de laboratorio, solo para aprendizaje; en producción real se elegiría otra. Si usas otra, AWS no admite `/`, `"`, `@` ni espacios, y para evitar problemas con Docker no uses `$`, `#` ni comillas, y es tu responsabilidad recordarla)
+* **Contraseña maestra:** **`pizzeria_pass_2026!`** (clave de laboratorio; ver la tabla de `GUIA_DESPLIEGUE_DIRECTO.md`. Si usas otra, AWS no admite `/`, `"`, `@` ni espacios, y para evitar problemas con Docker no uses `$`, `#` ni comillas, y es tu responsabilidad recordarla)
 * **Confirmar la contraseña maestra:** la misma `pizzeria_pass_2026!`
 * **Opciones de autenticación de bases de datos:** **Autenticación con contraseña**.
 
