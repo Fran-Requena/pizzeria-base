@@ -1,7 +1,7 @@
 # Guía de la App Android: del código al APK en tu móvil
 
-**Módulo:** Proyecto Intermodular (2º DAM)  
-**Ciclo Formativo:** Desarrollo de Aplicaciones Multiplataforma  
+**Módulo:** Proyecto Intermodular (2º DAM y 2º DAW)  
+**Ciclo Formativo:** Desarrollo de Aplicaciones Multiplataforma y Web  
 **Proyecto:** Pizzería Bella Napoli  
 **Tiempo estimado:** unos 15 minutos, la mayor parte esperando a que GitHub compile el APK [POR VERIFICAR EN LAB LIMPIO]  
 
@@ -39,9 +39,22 @@ La app **solo habla con la API**; la API es la única que habla con la base de d
 
 * El servidor de la [guía de despliegue directo](GUIA_DESPLIEGUE_DIRECTO.md) funcionando y accesible en `https://<TU_SUBDOMINIO>`
   (el subdominio que te dio el profesor). Ábrelo en el navegador del móvil: debe cargar la carta.
-* Un repositorio tuyo en GitHub con el proyecto (creado desde la plantilla del profesor) y permiso para editar su configuración.
+* Un repositorio tuyo en GitHub creado desde la plantilla del profesor:
+  1. Abre <https://github.com/guillermofoix/pizzeria-base> y pulsa **Use this template**.
+  2. Elige **Create a new repository**.
+  3. En **Owner** elige tu cuenta y ponle el nombre que quieras.
+  4. Marca la visibilidad **Public** y pulsa **Create repository**.
+
+  Tiene que ser **público** porque la Release con el APK se descarga desde el móvil sin iniciar sesión en GitHub,
+  y no contiene secretos: el `.env` no se sube al repositorio y la URL del servidor es una variable.
+
+  El repositorio nuevo **no hereda la historia ni las variables** del original. Por eso tienes que crear tú la
+  variable `URL_SERVIDOR` (paso 3).
 * Un móvil Android.
 * Opcional: los pagos con tarjeta de prueba, que se activan en el Apéndice A de la [guía de despliegue directo](GUIA_DESPLIEGUE_DIRECTO.md).
+
+> **¿Tienes iPhone?** Un APK solo se instala en Android. Haz la guía hasta el paso 4 (compilar y descargar el APK)
+> y prueba la instalación en el móvil Android de un compañero.
 
 > **Coste en el laboratorio:** la compilación corre en GitHub, no en AWS, y no gasta crédito del laboratorio.
 > Lo que sí consume es el servidor mientras esté encendido: apágalo al terminar según la [Ficha de continuidad](FICHA_CONTINUIDAD.md).
