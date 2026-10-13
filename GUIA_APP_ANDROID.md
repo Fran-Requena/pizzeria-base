@@ -37,7 +37,7 @@ La app **solo habla con la API**; la API es la única que habla con la base de d
 
 ## 2. Requisitos
 
-* El servidor de la guía de despliegue directo funcionando y accesible en `https://<TU_SUBDOMINIO>`
+* El servidor de la [guía de despliegue directo](GUIA_DESPLIEGUE_DIRECTO.md) funcionando y accesible en `https://<TU_SUBDOMINIO>`
   (el subdominio que te dio el profesor). Ábrelo en el navegador del móvil: debe cargar la carta.
 * Un repositorio tuyo en GitHub con el proyecto (creado desde la plantilla del profesor) y permiso para editar su configuración.
 * Un móvil Android.
@@ -88,16 +88,21 @@ El workflow **App Android** (`.github/workflows/app.yml`) compila y prueba la ap
 
 **Descargar el APK (camino del laboratorio):**
 
-1. Espera a que el workflow termine con la marca verde (unos minutos).
-2. Entra en esa ejecución y baja hasta **Artifacts**: descarga **`apk-debug`**. Es un `.zip` que contiene el `.apk`
-   y se conserva **14 días**.
-3. Descomprímelo y pasa el `.apk` a tu móvil (cable, correo o la nube).
+1. Lanza **Run workflow** y espera a que termine con la marca verde (unos minutos).
+2. En la página principal de tu repositorio, entra en **Releases** y abre la versión **`dev-latest`**
+   (marcada como *pre-release*).
+3. Descarga **`pizzeria-dev.apk`**. Puedes hacerlo **directamente desde el navegador del móvil**, sin pasar por el ordenador.
+   Si el repositorio es privado, el móvil tendrá que iniciar sesión en GitHub.
+
+Cada nueva ejecución **sustituye** a la Release `dev-latest` anterior: siempre es el APK más reciente.
 
 > [!NOTE]
-> Hay un segundo camino: cuando el workflow lo lanza un **push a `main`** (o a una rama `app-*`), publica
-> además el APK como *Release* `dev-latest` (archivo `pizzeria-dev.apk`), que se descarga directamente desde el móvil
-> en la sección **Releases** del repositorio. Con *Run workflow* esa publicación **no** se hace.
-> [POR VERIFICAR EN LAB LIMPIO] el nombre exacto del `.apk` dentro del zip.
+> [POR VERIFICAR EN LAB LIMPIO] Que la Release `dev-latest` aparece tras una ejecución manual con *Run workflow*.
+> Si no aparece, mira el trabajo **Publicar dev-latest** en la ejecución; si dice que se omitió, la rama
+> desde la que lanzaste no tiene el workflow actualizado.
+>
+> Alternativa: en la misma ejecución, bajo **Artifacts**, está **`apk-debug`**, un `.zip` con el mismo APK que se
+> conserva 14 días.
 
 > **En un proyecto real:** la compilación la hace **integración continua** en cada cambio, para que nadie dependa
 > del ordenador de otra persona. Hay dos tipos de APK: el de **pruebas** (como este, de depuración, para el equipo)
@@ -108,7 +113,7 @@ El workflow **App Android** (`.github/workflows/app.yml`) compila y prueba la ap
 
 ## 5. Instalar el APK en el móvil
 
-1. Abre el `.apk` desde el móvil (Archivos o Descargas).
+1. Abre `pizzeria-dev.apk` desde el móvil (Descargas o la barra de notificaciones del navegador).
 2. Android pedirá permiso para **instalar aplicaciones de orígenes desconocidos** para esa aplicación (el navegador o el gestor de archivos desde el que lo abres). Actívalo solo para esa app.
 3. Puede aparecer un aviso de **Google Play Protect** indicando que la app no es conocida o que no está verificada.
    Es normal con un APK que no viene de la tienda: elige la opción de instalar de todos modos.
@@ -146,12 +151,12 @@ El workflow **App Android** (`.github/workflows/app.yml`) compila y prueba la ap
 | El workflow falla con *«URL_SERVIDOR no es válida»* | La variable no empieza por `https://`, lleva espacios o comillas | Corrige la variable (pasos 3.4 a 3.6) y vuelve a lanzar el workflow |
 | La app abre pero pide la dirección del servidor | Compilaste **antes** de crear la variable (APK genérico) | Crea la variable y **relanza el workflow**; descarga e instala el APK nuevo |
 | La app apunta a un servidor que no es el tuyo | Instalaste un APK **antiguo** o la dirección guardada en el teléfono manda sobre la compilada | Desinstala el APK viejo, instala el nuevo y revisa **Diagnóstico**; ver el paso 8 |
-| La URL termina en `/` | El workflow no la rechaza, pero la guía exige no ponerla [POR VERIFICAR EN LAB LIMPIO] si la app la tolera | Quítala y vuelve a compilar |
+| La URL de la variable termina en `/` | La dirección no debe terminar en `/` | Quita la `/` final de `URL_SERVIDOR` y vuelve a compilar |
 | Con `http://` no compila | Android bloquea el tráfico sin cifrar (`usesCleartextTraffic=false`) y el workflow lo rechaza | Usa siempre `https://` (tu túnel de Cloudflare ya lo da) |
 | La app dice que no puede conectar y ofrece **Reintentar** | El servidor está apagado o el túnel no responde | Ábrelo en el navegador del móvil; arranca el laboratorio con la [Ficha de continuidad](FICHA_CONTINUIDAD.md) |
-| **Pagar con tarjeta** dice que no está disponible | Los pagos no están activados en el servidor | Apéndice A de la guía de despliegue directo |
+| **Pagar con tarjeta** dice que no está disponible | Los pagos no están activados en el servidor | Apéndice A de la [guía de despliegue directo](GUIA_DESPLIEGUE_DIRECTO.md) |
 | Pagas con tarjeta pero el pedido sigue sin pagar | No has vuelto a la app o aún no se ha confirmado | Abre la app y pulsa **Ya he pagado, comprobar** |
-| No encuentras el APK | Pasaron más de 14 días o descargaste el artefacto equivocado | Relanza el workflow y descarga **`apk-debug`** |
+| No aparece la Release `dev-latest` | El workflow no ha terminado o falló antes de publicar | Revisa la ejecución en **Actions**; si fue bien, relánzala con **Run workflow** |
 
 ---
 
