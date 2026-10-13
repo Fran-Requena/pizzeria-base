@@ -41,3 +41,6 @@ scratch/
 crear_tuneles.py
 eliminar_tuneles.py
 *.csv
+
+# Configuracion local de Claude Code
+.claude/

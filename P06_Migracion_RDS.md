@@ -112,8 +112,8 @@ Nuestra máquina **EC2 actuará como "Bastión"**: como está dentro de la misma
   > Configurar `pizzeria_user` en lugar de `postgres` permite mantener una paridad idéntica con el archivo `.env` del proyecto.
 * **Administración de credenciales:** **Autoadministrado** (*Self managed*).
 * **Generar contraseña automáticamente:** ❌ **Desmarcado**.
-* **Contraseña maestra:** **`<TU_CLAVE_RDS>`** (elige una clave propia de al menos 12 caracteres y apúntala; AWS no admite `/`, `"`, `@` ni espacios, y para evitar problemas con Docker no uses `$`, `#` ni comillas)
-* **Confirmar la contraseña maestra:** la misma `<TU_CLAVE_RDS>`
+* **Contraseña maestra:** **`pizzeria_pass_2026!`** (clave de laboratorio; ver la tabla de `GUIA_DESPLIEGUE_DIRECTO.md`. Si usas otra, AWS no admite `/`, `"`, `@` ni espacios, y para evitar problemas con Docker no uses `$`, `#` ni comillas, y es tu responsabilidad recordarla)
+* **Confirmar la contraseña maestra:** la misma `pizzeria_pass_2026!`
 * **Opciones de autenticación de bases de datos:** **Autenticación con contraseña**.
 
 ---
@@ -247,12 +247,10 @@ docker exec pizzeria-prod-db pg_dump -U pizzeria_user -d pizzeria_db > backup.sq
 #### Paso B: Restaurar la copia dentro de AWS RDS
 Inyecta el archivo en tu nueva instancia de Amazon RDS sustituyendo `<ENDPOINT_RDS>` por el endpoint que copiaste:
 
-La clave maestra de RDS se teclea sin mostrarse (no queda en el historial):
+La clave va entre comillas simples (así el `!` no da problemas en bash):
 
 ```bash
-read -r -s -p "Clave maestra de RDS: " PGPASSWORD; echo; export PGPASSWORD
-docker exec -e PGPASSWORD -i pizzeria-prod-db psql -h <ENDPOINT_RDS> -U pizzeria_user -d pizzeria_db < backup.sql
-unset PGPASSWORD
+docker exec -e PGPASSWORD='pizzeria_pass_2026!' -i pizzeria-prod-db psql -h <ENDPOINT_RDS> -U pizzeria_user -d pizzeria_db < backup.sql
 ```
 
 *(Verás pasar una ráfaga de confirmaciones `ALTER TABLE` y `setval`. Al terminar, ¡toda la base de datos estará clonada en AWS RDS!)*.
@@ -281,7 +279,7 @@ DB_HOST=<ENDPOINT_RDS>
 DB_PORT=5432
 DB_NAME=pizzeria_db
 DB_USER=pizzeria_user
-DB_PASSWORD=<TU_CLAVE_RDS>
+DB_PASSWORD=pizzeria_pass_2026!
 ```
 
 *(Guarda los cambios con `Ctrl + O`, presiona `Enter` y sal con `Ctrl + X`).*
@@ -375,7 +373,7 @@ docker compose -f docker-compose.db.yml up -d dbgate
 ```
 
 #### Paso 2: Inyectar la conexión con SSL a AWS RDS y reiniciar DbGate
-El script lee `DB_HOST`, `DB_USER`, `DB_PASSWORD`… del `.env` que acabas de editar, así que no tienes que escribir la clave en la terminal:
+El script lee `DB_HOST`, `DB_USER`, `DB_PASSWORD`… del `.env` que acabas de editar, así que no tienes que escribir la clave en la terminal (y el `!` no da problemas):
 
 ```bash
 bash scripts/dbgate_conexion_rds.sh

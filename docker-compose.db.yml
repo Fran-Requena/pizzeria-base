@@ -23,7 +23,7 @@ services:
       - local
     environment:
       POSTGRES_USER: ${DB_USER:-pizzeria_user}
-      POSTGRES_PASSWORD: "${DB_PASSWORD:?Define DB_PASSWORD en el archivo .env (elige tu propia clave, ver la guia de despliegue)}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?Define DB_PASSWORD en el archivo .env (copia .env.example a .env; ver la guia de despliegue)}"
       POSTGRES_DB: ${DB_NAME:-pizzeria_db}
     volumes:
       - pizzeria_prod_pgdata:/var/lib/postgresql/data

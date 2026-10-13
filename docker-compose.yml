@@ -2,6 +2,7 @@
 # ORQUESTACIÓN COMPLETA: PIZZERÍA FULL-STACK (DAW & DAM)
 # ==============================================================================
 # Levantar todo el stack con: docker compose up --build
+# La clave por defecto pizzeria_pass_1234 es solo para el PC del aula, nunca en AWS.
 # ==============================================================================
 
 services:

@@ -123,20 +123,21 @@ Generar el archivo `.env` a partir de la plantilla preconfigurada para producci�
 cp .env.example .env
 ```
 
-Abre el archivo con `nano .env` y completa **`DB_PASSWORD=`** con una clave que elijas tú (sin `$`, `#`, comillas ni espacios). **No hay clave por defecto**: si la dejas vacía, Docker se niega a arrancar con el mensaje *«Define DB_PASSWORD en el archivo .env»*.
+`DB_PASSWORD=` ya viene con la clave de laboratorio **`pizzeria_pass_2026!`** (la misma que usas como contraseña maestra de RDS; todas las claves de laboratorio están en la tabla de `GUIA_DESPLIEGUE_DIRECTO.md`), así que el `.env` es válido tal cual. Si la borras, Docker se niega a arrancar con el mensaje *«Define DB_PASSWORD en el archivo .env»*.
+
+> Son **claves de laboratorio, solo para aprendizaje**, iguales para todos (así un fallo nunca se debe a la clave). En producción real se elegirían otras. Si cambias alguna, tú eres responsable de recordarla.
 
 _(Nota: La plantilla ya viene preconfigurada con el puerto estándar `HTTP_PORT=80`)._
 
 ### Clave de acceso a DbGate (`.htpasswd`)
 
-El panel `/dbgate/` está protegido con usuario y contraseña por Nginx. El profesor te entrega en Aules la **clave de administración**; crea el archivo con ella **antes** de arrancar los contenedores (si no existe, Docker crea una carpeta con ese nombre y `/dbgate/` dará error 500):
+El panel `/dbgate/` está protegido con usuario y contraseña por Nginx. Crea el archivo (usuario `admin`, clave de laboratorio `PizzeriaAdmin_2026!`) **antes** de arrancar los contenedores (si no existe, Docker crea una carpeta con ese nombre y `/dbgate/` dará error 500):
 
 ```bash
-read -r -s -p "Clave de administración de DbGate: " CLAVE_ADMIN; echo
-printf 'admin:%s\n' "$(printf '%s' "$CLAVE_ADMIN" | openssl passwd -apr1 -stdin)" > .htpasswd
-unset CLAVE_ADMIN
-chmod 644 .htpasswd
+bash scripts/crear_htpasswd.sh
 ```
+
+Es un script y no un comando suelto porque el `!` de la clave da problemas al pegarlo en la terminal. Para usar otra clave: `bash scripts/crear_htpasswd.sh 'OtraClave_1!'` (entre comillas simples; y recuérdala).
 
 ---
 
@@ -171,7 +172,7 @@ Comprobar el funcionamiento desde un navegador web mediante las siguientes direc
 | **Portal Web & Cocina KDS**           | `http://<IP_PUBLICA>`            | Interfaz comercial interactiva y panel de pedidos de cocina.              |
 | **Diagnóstico de la API**             | `http://<IP_PUBLICA>/api/health` | Respuesta JSON: `{"status":"UP","database":{"connected":true}}`.          |
 | **WebApp Móvil Clientes**             | `http://<IP_PUBLICA>/app/`       | Aplicación PWA para clientes y lectura de mesas QR.                       |
-| **Gestión de Base de Datos (DbGate)** | `http://<IP_PUBLICA>/dbgate/`    | Pide usuario `admin` y la clave de administración; después, DbGate con la base de datos `pizzeria_db` ya autoconectada. |
+| **Gestión de Base de Datos (DbGate)** | `http://<IP_PUBLICA>/dbgate/`    | Pide usuario `admin` y la clave `PizzeriaAdmin_2026!`; después, DbGate con la base de datos `pizzeria_db` ya autoconectada. |
 
 ---
 

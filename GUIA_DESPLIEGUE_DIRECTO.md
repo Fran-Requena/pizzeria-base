@@ -8,8 +8,18 @@
 > **Antes de empezar:** lee la [Ficha de continuidad](FICHA_CONTINUIDAD.md). Ahí está el
 > presupuesto del laboratorio (50 $) y cómo parar y arrancar todo sin gastar saldo ni perder trabajo.
 
-> **Qué necesitas que te dé el profesor (en Aules):** tu **subdominio** y tu **token de túnel**, y
-> la **clave de administración** de `/dbgate/`. Las demás claves las eliges tú.
+> **Qué necesitas que te dé el profesor (en Aules):** tu **subdominio** y tu **token de túnel**.
+>
+> **Claves de laboratorio (solo para aprendizaje, iguales para todos):**
+>
+> | Para qué | Valor |
+> | :--- | :--- |
+> | Contraseña maestra de RDS y `DB_PASSWORD` | `pizzeria_pass_2026!` |
+> | DbGate (`/dbgate/`, usuario `admin`) | `PizzeriaAdmin_2026!` |
+> | Usuario `pizzeria_app` (mínimo privilegio, P08) | `PizzeriaApp_Secure_2026!` |
+> | Desarrollo local (`docker-compose.yml`, solo PC del aula, nunca en AWS) | `pizzeria_pass_1234` |
+>
+> En producción real se elegirían otras. Si cambias alguna, tú eres responsable de recordarla.
 
 ---
 
@@ -115,8 +125,8 @@ graph TB
    * **Identificador de instancia de base de datos:** `pizzeria-db`
    * **Usuario maestro:** `pizzeria_user`
    * **Gestión de credenciales:** Autogestionada (*Self managed*).
-   * **Contraseña maestra:** `<TU_CLAVE_RDS>`: elige una clave propia de al menos 12 caracteres y **apúntala**, la necesitarás en el `.env`.  
-     AWS no admite `/`, `"`, `@` ni espacios. Para evitar problemas con Docker, **no uses tampoco `$`, `#` ni comillas**.
+   * **Contraseña maestra:** `pizzeria_pass_2026!` (clave de laboratorio; la misma que ya trae el `.env.example`).  
+     Si prefieres otra, AWS no admite `/`, `"`, `@` ni espacios, y para evitar problemas con Docker no uses `$`, `#` ni comillas.
    * **Configuración de la instancia:** `db.t4g.micro` (o `db.t3.micro`).
    * **Almacenamiento:**
      * **Tipo de almacenamiento:** SSD de uso general (`gp3`).
@@ -186,20 +196,20 @@ Para conectar tu máquina a Internet sin exponer IPs públicas ni abrir puertos 
 3. Modifica los siguientes parámetros (el resto déjalos como están):
    * **`CLOUDFLARE_TUNNEL_TOKEN=`** $\rightarrow$ Pega tu token de Cloudflare.
    * **`DB_HOST=db`** $\rightarrow$ Sustituye `db` por el **Punto de enlace (*Endpoint*) de AWS RDS** que copiaste en el paso 1.4.
-   * **`DB_PASSWORD=`** $\rightarrow$ Escribe la **misma clave** que pusiste como contraseña maestra de RDS.
+   * **`DB_PASSWORD=`** ya viene con la clave de laboratorio `pizzeria_pass_2026!`, la misma que pusiste como contraseña maestra de RDS. No la toques.
      ```ini
      DB_HOST=<ENDPOINT_RDS>
      DB_PORT=5432
      DB_NAME=pizzeria_db
      DB_USER=pizzeria_user
-     DB_PASSWORD=<TU_CLAVE_RDS>
+     DB_PASSWORD=pizzeria_pass_2026!
      ```
-     > Sustituye los textos entre `<` y `>` por tus valores, **sin** los signos `<` `>`, sin comillas y sin espacios.
+     > Sustituye `<ENDPOINT_RDS>` por tu endpoint, **sin** los signos `<` `>`, sin comillas y sin espacios.
      > [!TIP]
      > **Recordatorio:** Este valor proviene de la consola de RDS $\rightarrow$ *pizzeria-db* $\rightarrow$ pestaña *Conectividad y seguridad* $\rightarrow$ tarjeta **`Puntos de conexión`** $\rightarrow$ campo **Punto de enlace**.
      > [!IMPORTANT]
-     > Si dejas `DB_PASSWORD` vacía, Docker se negará a arrancar con el mensaje *«Define DB_PASSWORD en el archivo .env»*. Es lo esperado: no hay clave por defecto.
-   *(Guarda en nano con `Ctrl + O`, `Enter` y sal con `Ctrl + X`). Edita el `.env` siempre con `nano`: así tus claves no quedan escritas en el historial de la terminal.*
+     > Si borras `DB_PASSWORD` del `.env`, Docker se negará a arrancar con el mensaje *«Define DB_PASSWORD en el archivo .env»*. Es lo esperado: vuelve a poner la clave.
+   *(Guarda en nano con `Ctrl + O`, `Enter` y sal con `Ctrl + X`).*
 
 ---
 
@@ -219,7 +229,7 @@ Amazon RDS exige conexiones cifradas con TLS/SSL y no utiliza el contenedor loca
    docker compose -f docker-compose.db.yml up -d dbgate
    ```
 
-2. Genera la conexión a RDS (con `"useSsl": true`) y reinicia DbGate. El script lee `DB_HOST`, `DB_USER`, `DB_PASSWORD`… de tu `.env`, así que **no tienes que escribir la clave** ni queda en el historial:
+2. Genera la conexión a RDS (con `"useSsl": true`) y reinicia DbGate. El script lee `DB_HOST`, `DB_USER`, `DB_PASSWORD`… de tu `.env`, así que **no tienes que escribir la clave** (y el `!` no da problemas):
    ```bash
    bash scripts/dbgate_conexion_rds.sh
    ```
@@ -246,15 +256,12 @@ Como DbGate otorga acceso administrativo directo a todas las tablas de PostgreSQ
 La protección **ya viene en el repositorio**: `frontend-web/nginx.conf` exige usuario y contraseña en `/dbgate/` y
 `docker-compose.app.yml` monta el archivo `.htpasswd` dentro de Nginx. **No edites ninguno de esos dos archivos.** Solo te falta crear el `.htpasswd`, y **antes** del `up` del paso 3.6:
 
-1. Ten a mano la **clave de administración** que te ha dado el profesor en Aules (`<CLAVE_ADMIN>`). Ejecuta estas líneas
-   (la clave se escribe sin mostrarse y no queda en el historial; funciona con caracteres como `!`):
+1. Crea el archivo con el usuario `admin` y la clave de laboratorio `PizzeriaAdmin_2026!`:
    ```bash
-   read -r -s -p "Clave de administración de DbGate: " CLAVE_ADMIN; echo
-   printf 'admin:%s\n' "$(printf '%s' "$CLAVE_ADMIN" | openssl passwd -apr1 -stdin)" > .htpasswd
-   unset CLAVE_ADMIN
-   chmod 644 .htpasswd
+   bash scripts/crear_htpasswd.sh
    ```
-   El usuario es siempre `admin`. Los permisos `644` son necesarios: Nginx (usuario `nginx` dentro del contenedor) tiene que poder leer el archivo.
+   El script pone los permisos `644`, necesarios para que Nginx (usuario `nginx` dentro del contenedor) pueda leer el archivo. Es un script y no un comando suelto porque el `!` de la clave da problemas al pegarlo en la terminal (bash lo interpreta como expansión del historial).
+   Si quieres otra clave, pásala entre **comillas simples**: `bash scripts/crear_htpasswd.sh 'OtraClave_1!'` (y recuérdala).
 
 2. Comprueba que es un **archivo** (empieza por `-`) y que contiene una línea que empieza por `admin:$apr1$`:
    ```bash
@@ -265,9 +272,9 @@ La protección **ya viene en el repositorio**: `frontend-web/nginx.conf` exige u
 > [!WARNING]
 > **El orden importa.** Si arrancas el stack sin que exista `.htpasswd`, Docker crea una **carpeta** con ese nombre y Nginx
 > no podrá leer las claves (`/dbgate/` dará error 500). Si te pasa: `docker compose -f docker-compose.app.yml down`,
-> `rm -r .htpasswd`, vuelve a crearlo con los comandos de arriba y repite el paso 3.6.
+> `rm -r .htpasswd`, vuelve a crearlo con el comando de arriba y repite el paso 3.6.
 
-> El archivo `.htpasswd` está en el `.gitignore`: no se sube a Git. Si cambias la clave de administración, repite el paso 1 y reinicia Nginx:
+> El archivo `.htpasswd` está en el `.gitignore`: no se sube a Git. Si cambias la clave de administración, repite el paso 1 con la clave nueva y reinicia Nginx:
 > `docker compose -f docker-compose.app.yml restart frontend-web`.
 
 
@@ -329,7 +336,7 @@ Comprueba que la infraestructura está 100% operativa:
    * 👉 **WebApp QR Mesas:** `https://<TU_SUBDOMINIO>/app/` $\rightarrow$ Interfaz móvil para comensales.
    * 👉 **Gestor Visual DbGate (`/dbgate/`):**
      1. Entra a `https://<TU_SUBDOMINIO>/dbgate/`. El navegador te pedirá usuario y contraseña (es la protección de Nginx).
-     2. Introduce las credenciales de administración: Usuario `admin` | Contraseña `<CLAVE_ADMIN>` (la que te dio el profesor y usaste en el paso 3.5).
+     2. Introduce las credenciales de administración: Usuario `admin` | Contraseña `PizzeriaAdmin_2026!` (la del paso 3.5).
      3. En el panel izquierdo de **Conexiones**, haz doble clic sobre: 👉 **`AWS RDS Bella Napoli`**.
      4. Se conectará mediante SSL a Amazon RDS y desplegará la carpeta **Tablas**: verás `pizzas`, `ingredientes`, `mesas`, `pedidos` y `lineas_pedido`.
      5. Haz doble clic sobre cualquier tabla (ej. `pizzas` o `pedidos`) para ver y editar registros en vivo, o pulsa en **Nueva consulta** (*New Query*) para lanzar sentencias SQL directas contra PostgreSQL.
@@ -465,7 +472,7 @@ Todo se hace en **modo de prueba** de Stripe: no se mueve dinero real. **No puls
    * Al crearlo, copia el **Secreto de firma** (*Signing secret*). Empieza por `whsec_`.
 4. En la EC2 edita el `.env` (con `nano`, para que las claves no queden en el historial) y rellena estas tres variables, sin comillas ni espacios:
    ```ini
-   STRIPE_SECRET_KEY=sk_test_<TU_CLAVE_DE_PRUEBA>
+   STRIPE_SECRET_KEY=sk_test_<CLAVE_STRIPE_DE_PRUEBA>
    STRIPE_WEBHOOK_SECRET=whsec_<TU_SECRETO_DE_FIRMA>
    FRONTEND_URL=https://<TU_SUBDOMINIO>
    ```
