@@ -117,13 +117,10 @@ Si ya lo creaste en la práctica P01 o en la guía de despliegue directo, no tie
 cd ~/pizzeria-base
 ```
 
-El profesor te entrega la **clave de administración** (`<CLAVE_ADMIN>`) en Aules. Genera el archivo con el usuario **`admin`**; la clave se teclea sin mostrarse y no queda en el historial (funciona con caracteres como `!`):
+Genera el archivo con el usuario **`admin`** y la clave de laboratorio **`PizzeriaAdmin_2026!`** (solo para aprendizaje; en producción real se elegiría otra). Es un script porque el `!` da problemas al pegarlo directamente en la terminal; para otra clave, pásala entre comillas simples: `bash scripts/crear_htpasswd.sh 'OtraClave_1!'`.
 
 ```bash
-read -r -s -p "Clave de administración de DbGate: " CLAVE_ADMIN; echo
-printf 'admin:%s\n' "$(printf '%s' "$CLAVE_ADMIN" | openssl passwd -apr1 -stdin)" > .htpasswd
-unset CLAVE_ADMIN
-chmod 644 .htpasswd
+bash scripts/crear_htpasswd.sh
 ```
 
 > [!IMPORTANT]
@@ -131,7 +128,7 @@ chmod 644 .htpasswd
 > El proceso de Nginx dentro del contenedor se ejecuta bajo el usuario no privilegiado `nginx` (UID 101). Si el archivo `.htpasswd` tuviera permisos restrictivos (como `600`), el servidor Nginx no podría leerlo y devolvería un error **`500 Internal Server Error`** al introducir las claves.
 
 > [!WARNING]
-> **El archivo debe existir antes del `up`.** Si no existe, Docker crea una **carpeta** llamada `.htpasswd` y `/dbgate/` dará error 500. En ese caso: `docker compose -f docker-compose.app.yml down`, `rm -r .htpasswd` y vuelve a crearlo con los comandos de arriba.
+> **El archivo debe existir antes del `up`.** Si no existe, Docker crea una **carpeta** llamada `.htpasswd` y `/dbgate/` dará error 500. En ese caso: `docker compose -f docker-compose.app.yml down`, `rm -r .htpasswd` y vuelve a crearlo con el comando de arriba.
 
 *(Puedes comprobar que es un archivo con `ls -l .htpasswd` y que contiene el hash con `cut -c1-14 .htpasswd`, que debe mostrar `admin:$apr1$` y unos caracteres más).*
 
@@ -154,7 +151,7 @@ Abre una ventana en modo incógnito (o refresca con `Ctrl + F5`) y accede a tu s
 
 1. El navegador mostrará inmediatamente una **ventana emergente de inicio de sesión del sistema** solicitando usuario y contraseña:
    * **Nombre de usuario:** `admin`
-   * **Contraseña:** la clave de administración (`<CLAVE_ADMIN>`) que te dio el profesor
+   * **Contraseña:** `PizzeriaAdmin_2026!`
 2. Si introduces una contraseña errónea o cancelas el diálogo, el servidor devolverá un código de error **`401 Authorization Required`**.
 3. Al introducir las credenciales correctas, DbGate cargará con normalidad.
 
@@ -174,9 +171,7 @@ www-authenticate: Basic realm="Zona Restringida - Administracion Pizzeria"
 Ahora comprueba que con credenciales válidas el acceso es concedido:
 
 ```bash
-read -r -s -p "Clave de administración: " CLAVE_ADMIN; echo
-curl -sI -u "admin:$CLAVE_ADMIN" https://daw-XX.guillermofoix.org/dbgate/ | grep "HTTP"
-unset CLAVE_ADMIN
+curl -sI -u 'admin:PizzeriaAdmin_2026!' https://daw-XX.guillermofoix.org/dbgate/ | grep "HTTP"
 ```
 
 **Salida esperada:**
