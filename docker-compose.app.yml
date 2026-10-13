@@ -29,7 +29,7 @@ services:
       DB_HOST: ${DB_HOST:-db}
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER:-pizzeria_user}
-      DB_PASSWORD: "${DB_PASSWORD:?Define DB_PASSWORD en el archivo .env (elige tu propia clave, ver la guia de despliegue)}"
+      DB_PASSWORD: "${DB_PASSWORD:?Define DB_PASSWORD en el archivo .env (copia .env.example a .env; ver la guia de despliegue)}"
       DB_NAME: ${DB_NAME:-pizzeria_db}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       # Cifrado SSL con la base de datos (con RDS se activa solo; "true" lo fuerza)
